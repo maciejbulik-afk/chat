@@ -31,6 +31,7 @@ jobs:
       - name: Wystawienie instalatora do pobrania
         uses: actions/upload-artifact@v4
         with:
-          name: KSeFinbox-Chat-Windows
-          path: src-tauri/target/release/bundle/
-
+          name: Google-Chat-Windows
+          path: |
+            src-tauri/target/release/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
