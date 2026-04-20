@@ -169,35 +169,38 @@ fn main() {
             const invokeTauri = (cmd, args) => {
                 if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
                     window.__TAURI__.core.invoke(cmd, args).catch(console.error);
+                } else if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
+                    window.__TAURI_INTERNALS__.invoke(cmd, args).catch(console.error);
+                } else {
+                    console.error("No Tauri IPC found.");
                 }
             };
             
-            const titleEl = document.querySelector('title');
-            if (titleEl) {
-                const observer = new MutationObserver((mutations) => {
-                    const title = document.title;
-                    if (title.match(/^\(\d+\)/) || title.includes("napisa")) {
-                        if (!hasNotified) {
-                            hasNotified = true;
-                            let safeTitle = "Nowa wiadomość";
-                            if (title.includes("napisa")) {
-                                safeTitle = title.split(" -")[0] || title;
-                            }
-                            invokeTauri('play_notification_sound', { volume: 0.5 });
-                            invokeTauri('create_notification_window', { 
-                                title: safeTitle, 
-                                body: "Sprawdź zakładkę z aplikacją Google Chat" 
-                            });
+            const checkTitle = () => {
+                const title = document.title;
+                if (title && (title.match(/^\(\d+\)/) || title.includes("napisa") || title.includes("says") || title.includes("sent a message"))) {
+                    if (!hasNotified) {
+                        hasNotified = true;
+                        let safeTitle = "Nowa wiadomość";
+                        if (title.includes("napisa")) {
+                            safeTitle = title.split(" -")[0] || title;
                         }
-                    } else if (title === "Google Chat" || title === "Chat") {
-                        if (hasNotified) {
-                            hasNotified = false;
-                            invokeTauri('close_notification_window', {});
-                        }
+                        invokeTauri('play_notification_sound', { volume: 0.5 });
+                        invokeTauri('create_notification_window', { 
+                            title: safeTitle, 
+                            body: "Sprawdź zakładkę z aplikacją Google Chat" 
+                        });
                     }
-                });
-                observer.observe(titleEl, { subtree: true, characterData: true, childList: true });
-            }
+                } else if (title === "Google Chat" || title === "Chat") {
+                    if (hasNotified) {
+                        hasNotified = false;
+                        invokeTauri('close_notification_window', {});
+                    }
+                }
+            };
+
+            const observer = new MutationObserver(() => checkTitle());
+            observer.observe(document.querySelector('head'), { subtree: true, characterData: true, childList: true });
             
             window.addEventListener('focus', () => { 
                 if (hasNotified) {
