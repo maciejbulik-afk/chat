@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google Chat Client</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <h1>Google Chat - Tauri 2.0</h1>
+      
+      <div class="card">
+        <button id="test-notif">Testuj Powiadomienie Wizualne</button>
+      </div>
+
+      <div class="card audio-controls">
+        <label for="volume-slider">Głośność: <span id="volume-val">0.5</span></label>
+        <br/>
+        <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" />
+        <br/><br/>
+        <button id="test-audio">Testuj Dźwięk</button>
+      </div>
+
+      <div class="card">
+        <button id="test-upload">Wybierz Plik do Przesłania</button>
+        <p id="upload-status" style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;"></p>
+      </div>
+
+      <div class="card" id="login-card" style="border: 1px solid #4285F4;">
+        <button id="login-google" style="background-color: #4285F4; color: white;">Zaloguj z Google</button>
+        <p id="login-status" style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;">Nie zalogowano</p>
+      </div>
+
+      <div id="chat-section" style="display: none;">
+        <div class="card" style="border: 1px solid #0f9d58;">
+          <button id="fetch-spaces" style="background-color: #0f9d58; color: white;">Pobierz Czaty</button>
+          <div style="margin-top: 10px;">
+            <select id="spaces-list" style="width: 100%; padding: 5px; color: black;" disabled>
+              <option value="">Wybierz czat...</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+            <button id="start-polling" disabled>Uruchom nasłuchiwanie</button>
+            <p id="polling-status" style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;"></p>
+        </div>
+
+        <div class="card">
+          <input type="text" id="message-text" placeholder="Treść wiadomości..." style="width: 100%; padding: 8px; margin-bottom: 10px; color: black;" disabled>
+          <button id="send-message" disabled>Wyślij testową wiadomość</button>
+          <p id="send-status" style="font-size: 0.9em; opacity: 0.8; margin-top: 10px;"></p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

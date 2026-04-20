@@ -1,0 +1,16 @@
+{
+  "productName": "Google Chat",
+  "version": "0.1.0",
+  "identifier": "com.ism.googlechat",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for development",
+  "windows": [
+    "*"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-close",
+    "dialog:default",
+    "shell:default",
+    "shell:allow-open"
+  ],
+  "remote": {
+    "urls": ["https://chat.google.com"]
+  }
+}

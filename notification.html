@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Notification</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: transparent;
+        font-family: system-ui, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+      }
+      .notification {
+        background-color: rgba(20, 20, 20, 0.85);
+        color: white;
+        border-radius: 12px;
+        padding: 20px 40px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        border: 2px solid rgba(255, 0, 0, 0.5);
+        cursor: pointer;
+        animation: pulse-border 1.5s infinite;
+        text-align: center;
+      }
+      .title {
+        font-weight: 800;
+        font-size: 18px;
+        margin-bottom: 4px;
+      }
+      @keyframes pulse-border {
+        0% {
+          border-color: rgba(255, 0, 0, 0.8);
+          box-shadow: 0 0 10px rgba(255, 0, 0, 0.4);
+        }
+        50% {
+          border-color: rgba(255, 0, 0, 0.2);
+          box-shadow: 0 0 20px rgba(255, 0, 0, 0.1);
+        }
+        100% {
+          border-color: rgba(255, 0, 0, 0.8);
+          box-shadow: 0 0 10px rgba(255, 0, 0, 0.4);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="notification" id="notification-card">
+      <div class="title">Nowa Wiadomość!</div>
+      <div style="font-size: 12px; opacity: 0.8;">Kliknij, aby zamknąć powiadomienie</div>
+    </div>
+    <script type="module">
+      import { getCurrentWindow } from '@tauri-apps/api/window';
+      document.body.addEventListener('click', async () => {
+        try {
+          await getCurrentWindow().close();
+        } catch (e) {
+          console.error(e);
+        }
+      });
+    </script>
+  </body>
+</html>
