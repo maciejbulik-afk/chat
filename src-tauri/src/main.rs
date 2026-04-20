@@ -19,6 +19,12 @@ use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 
 use tauri::Manager;
 
+#[cfg(not(target_os = "linux"))]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[cfg(not(target_os = "linux"))]
+static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 // We need a lazy static mutex for audio to prevent issues with dropped streams,
 // but lazy_static isn't added. We can just instantiate OutputStream inside the thread.
 
