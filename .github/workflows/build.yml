@@ -27,3 +27,10 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Wystawienie instalatora do pobrania
+        uses: actions/upload-artifact@v4
+        with:
+          name: KSeFinbox-Chat-Windows
+          path: src-tauri/target/release/bundle/
+
