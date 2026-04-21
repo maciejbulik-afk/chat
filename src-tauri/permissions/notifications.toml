@@ -3,7 +3,7 @@
 [[permission]]
 identifier = "allow-invoke"
 description = "Enables all manual custom backend command invocations."
-commands = [
+commands.allow = [
     "play_notification_sound",
     "create_notification_window",
     "close_notification_window",
