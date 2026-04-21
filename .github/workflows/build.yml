@@ -35,4 +35,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Google-Chat-Windows
-          path: ${{ join(fromJSON(steps.tauri_build.outputs.artifactPaths), '\n') }}
+          path: |
+            **/*.msi
+            **/*-setup.exe
+            !**/node_modules/**
