@@ -25,6 +25,7 @@ jobs:
 
       - name: Kompilacja Tauri (Tworzenie MSI)
         uses: tauri-apps/tauri-action@v0
+        id: tauri_build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -34,7 +35,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Google-Chat-Windows
-          path: |
-            src-tauri/target/release/*.exe
-            src-tauri/target/**/bundle/**/*.exe
-            src-tauri/target/**/bundle/**/*.msi
+          path: ${{ join(fromJSON(steps.tauri_build.outputs.artifactPaths), '\n') }}
