@@ -26,11 +26,8 @@ jobs:
       - name: Kompilacja Tauri (Tworzenie MSI)
         run: npm run tauri build
 
-      - name: Wystawienie instalatora do pobrania
+      - name: Wystawienie wszystkiego co powstawalo (Opcja Nuklearna)
         uses: actions/upload-artifact@v4
         with:
-          name: Google-Chat-Windows
-          path: |
-            **/*.msi
-            **/*-setup.exe
-            !**/node_modules/**
+          name: Zrzut-Caly-Katalog
+          path: src-tauri/target/release/
