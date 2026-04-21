@@ -35,5 +35,6 @@ jobs:
         with:
           name: Google-Chat-Windows
           path: |
+            src-tauri/target/release/*.exe
             src-tauri/target/**/bundle/**/*.exe
             src-tauri/target/**/bundle/**/*.msi
