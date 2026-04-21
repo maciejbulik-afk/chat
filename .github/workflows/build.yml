@@ -24,12 +24,7 @@ jobs:
           toolchain: stable
 
       - name: Kompilacja Tauri (Tworzenie MSI)
-        uses: tauri-apps/tauri-action@v0
-        id: tauri_build
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          includeRelease: false
+        run: npm run tauri build
 
       - name: Wystawienie instalatora do pobrania
         uses: actions/upload-artifact@v4
