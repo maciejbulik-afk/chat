@@ -12,7 +12,7 @@
     "dialog:default",
     "shell:default",
     "shell:allow-open",
-    "google-chat:allow-invoke"
+    "allow-invoke"
   ],
   "remote": {
     "urls": ["https://chat.google.com"]
