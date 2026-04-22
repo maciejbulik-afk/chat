@@ -48,6 +48,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
+        .visible(false)
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -68,6 +69,8 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
 
             let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
         }
+
+        let _ = window.show();
     }
 
     #[cfg(target_os = "linux")]
@@ -151,10 +154,11 @@ fn main() {
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
             let hasNotified = false;
+            let lastNotifyTime = 0;
 
-            console.log('[ISM-Chat] Skrypt wstrzykniety, czekam na Tauri IPC...');
+            console.log('[ISM-Chat] Skrypt wstrzykniety');
 
-            // Wymuszamy aby wyskakujace okna logowania otwieraly sie w naszej aplikacji Tauri (blokowanie target="_blank")
+            // Wymuszamy aby wyskakujace okna logowania otwieraly sie w naszej aplikacji Tauri
             window.open = function(url, name, features) {
                 window.location.href = url;
                 return null;
@@ -169,53 +173,45 @@ fn main() {
 
             const invokeTauri = (cmd, args) => {
                 if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-                    console.log('[ISM-Chat] invoke:', cmd, args);
+                    console.log('[ISM-Chat] invoke:', cmd);
                     window.__TAURI__.core.invoke(cmd, args).catch(e => console.error('[ISM-Chat] invoke BLAD:', cmd, e));
-                } else if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                    console.log('[ISM-Chat] invoke (internals):', cmd, args);
-                    window.__TAURI_INTERNALS__.invoke(cmd, args).catch(e => console.error('[ISM-Chat] invoke BLAD:', cmd, e));
-                } else {
-                    console.error('[ISM-Chat] Brak Tauri IPC! __TAURI__=', typeof window.__TAURI__, '__TAURI_INTERNALS__=', typeof window.__TAURI_INTERNALS__);
                 }
             };
-            
-            // Diagnostyka: sprawdz czy IPC jest dostepne po 2s
-            setTimeout(() => {
-                const hasTauri = !!(window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke);
-                const hasInternals = !!(window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
-                console.log('[ISM-Chat] IPC status po 2s: __TAURI__=' + hasTauri + ', __TAURI_INTERNALS__=' + hasInternals);
-            }, 2000);
 
-            const checkTitle = () => {
+            // Polling co 1s zamiast MutationObserver (Google Chat zmienia tytul przez przypisanie)
+            setInterval(() => {
                 const title = document.title;
-                if (title && (title.match(/^\(\d+\)/) || title.includes("napisa") || title.includes("says") || title.includes("sent a message"))) {
+                const isNewMsg = title && (title.match(/^\(\d+\)/) || title.includes("Masz wiadomo") || title.includes("napisa") || title.includes("says") || title.includes("sent a message"));
+
+                if (isNewMsg) {
                     if (!hasNotified) {
                         hasNotified = true;
+                        lastNotifyTime = Date.now();
                         let safeTitle = "Nowa wiadomość";
-                        if (title.includes("napisa")) {
+                        if (title.includes("od:")) {
+                            safeTitle = title.split(" - ")[0] || title;
+                        } else if (title.includes("napisa")) {
                             safeTitle = title.split(" -")[0] || title;
                         }
-                        console.log('[ISM-Chat] Nowa wiadomosc wykryta, tytul:', safeTitle);
+                        console.log('[ISM-Chat] Nowa wiadomosc:', safeTitle);
                         invokeTauri('play_notification_sound', { volume: 0.5 });
-                        invokeTauri('create_notification_window', { 
-                            title: safeTitle, 
-                            body: "Sprawdź zakładkę z aplikacją Google Chat" 
+                        invokeTauri('create_notification_window', {
+                            title: safeTitle,
+                            body: "Sprawdź Google Chat"
                         });
                     }
-                } else if (title === "Google Chat" || title === "Chat") {
-                    if (hasNotified) {
+                } else {
+                    // Cooldown 5s - Google Chat migocze tytulem, nie zamykaj od razu
+                    if (hasNotified && (Date.now() - lastNotifyTime > 5000)) {
                         hasNotified = false;
                         invokeTauri('close_notification_window', {});
                     }
                 }
-            };
+            }, 1000);
 
-            const observer = new MutationObserver(() => checkTitle());
-            observer.observe(document.querySelector('head'), { subtree: true, characterData: true, childList: true });
-            
-            window.addEventListener('focus', () => { 
+            window.addEventListener('focus', () => {
                 if (hasNotified) {
-                    hasNotified = false; 
+                    hasNotified = false;
                     invokeTauri('close_notification_window', {});
                 }
             });
@@ -264,7 +260,7 @@ fn main() {
 
             #[cfg(not(target_os = "linux"))]
             {
-                let _ = tauri::WebviewWindowBuilder::new(
+                let main_window = tauri::WebviewWindowBuilder::new(
                     app,
                     "main",
                     tauri::WebviewUrl::External("https://chat.google.com".parse().unwrap())
@@ -273,6 +269,9 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .initialization_script(inject_script)
                 .build()?;
+
+                // Tymczasowo: otwórz DevTools żeby widzieć logi [ISM-Chat]
+                main_window.open_devtools();
             }
             #[cfg(target_os = "linux")]
             {
