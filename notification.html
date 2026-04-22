@@ -76,14 +76,16 @@
     <script type="module">
       import { getCurrentWindow } from '@tauri-apps/api/window';
       
-      // Wyswietl nazwe nadawcy z tytulu okna
       const win = getCurrentWindow();
-      try {
-        const t = await win.title();
-        if (t && t !== 'Notification') {
-          document.getElementById('notif-title').textContent = t;
-        }
-      } catch(e) {}
+
+      (async () => {
+        try {
+          const t = await win.title();
+          if (t && t !== 'Notification') {
+            document.getElementById('notif-title').textContent = t;
+          }
+        } catch(e) {}
+      })();
 
       document.body.addEventListener('click', async () => {
         try { await win.close(); } catch(e) {}
