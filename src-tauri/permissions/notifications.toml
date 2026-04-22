@@ -7,5 +7,6 @@ commands.allow = [
     "play_notification_sound",
     "create_notification_window",
     "close_notification_window",
-    "upload_file_stream"
+    "upload_file_stream",
+    "set_tray_alert"
 ]

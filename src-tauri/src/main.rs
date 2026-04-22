@@ -9,6 +9,7 @@ use tauri::{AppHandle, WebviewWindowBuilder, WebviewUrl};
 #[cfg(target_os = "linux")]
 use tauri::AppHandle;
 
+use tauri::image::Image;
 use rodio::{Decoder, OutputStream, Sink};
 use std::fs::File;
 use std::thread;
@@ -25,14 +26,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(not(target_os = "linux"))]
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-// We need a lazy static mutex for audio to prevent issues with dropped streams,
-// but lazy_static isn't added. We can just instantiate OutputStream inside the thread.
+static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.png");
+static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.png");
 
 #[tauri::command]
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
     #[cfg(not(target_os = "linux"))]
     {
-        let _ = body; // Unused for now in webview mode
+        let _ = body;
         let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
         let label = format!("notif_{}", id);
         
@@ -42,9 +43,8 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
             WebviewUrl::App("notification.html".into())
         )
         .title(title)
-        .inner_size(320.0, 100.0)
+        .inner_size(360.0, 80.0)
         .decorations(false)
-        .transparent(true)
         .always_on_top(true)
         .skip_taskbar(true)
         .resizable(false)
@@ -55,14 +55,14 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         if let Ok(Some(monitor)) = window.primary_monitor() {
             let scale_factor = monitor.scale_factor();
             let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                (320.0 * scale_factor) as u32,
-                (100.0 * scale_factor) as u32,
+                (360.0 * scale_factor) as u32,
+                (80.0 * scale_factor) as u32,
             ));
             let monitor_size = monitor.size();
             let monitor_pos = monitor.position();
 
-            let margin_x = (20.0 * scale_factor) as i32;
-            let margin_y = (60.0 * scale_factor) as i32;
+            let margin_x = (12.0 * scale_factor) as i32;
+            let margin_y = (50.0 * scale_factor) as i32;
 
             let x = monitor_pos.x + monitor_size.width as i32 - size.width as i32 - margin_x;
             let y = monitor_pos.y + monitor_size.height as i32 - size.height as i32 - margin_y;
@@ -80,6 +80,8 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
             .summary(&title)
             .body(&body)
             .appname("Google Chat")
+            .icon("mail-message-new")
+            .timeout(notify_rust::Timeout::Milliseconds(8000))
             .show()
             .map_err(|e| format!("Błąd wysyłania powiadomienia D-Bus: {}", e))?;
     }
@@ -88,16 +90,23 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
 }
 
 #[tauri::command]
+fn set_tray_alert(app: AppHandle, alert: bool) -> Result<(), String> {
+    if let Some(tray) = app.tray_by_id("main-tray") {
+        let icon_bytes = if alert { ICON_ALERT } else { ICON_NORMAL };
+        let icon = Image::from_bytes(icon_bytes).map_err(|e| e.to_string())?;
+        tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn play_notification_sound(volume: f32) -> Result<(), String> {
     let safe_volume = volume.clamp(0.0, 1.0);
     
     thread::spawn(move || {
-        // Obtaining an output stream in rodio v0.19
         if let Ok((_stream, stream_handle)) = OutputStream::try_default() {
             if let Ok(sink) = Sink::try_new(&stream_handle) {
                 sink.set_volume(safe_volume);
-
-                // TODO: Dostarczyć zasób notif.mp3 do folderu assets/
                 if let Ok(file) = File::open("assets/notif.mp3") {
                     if let Ok(source) = Decoder::new(BufReader::new(file)) {
                         sink.append(source);
@@ -121,12 +130,10 @@ async fn upload_file_stream(file_path: String) -> Result<String, String> {
     let path = std::path::Path::new(&file_path);
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
 
-    // Asynchroniczne potwierdzenie otwarcia pliku
     let mut _file = async_fs::File::open(&file_path)
         .await
         .map_err(|e| format!("Błąd otwarcia pliku: {}", e))?;
 
-    // Zamockowanie operacji
     println!("=== ROZPOCZĘTO SYMULACJĘ UPLOADU ===");
     println!("Nazwa pliku: {}", file_name);
     println!("Rozmiar pliku: {} bajtów", size);
@@ -158,7 +165,6 @@ fn main() {
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
-            // Wymuszamy aby wyskakujace okna logowania otwieraly sie w naszej aplikacji Tauri
             window.open = function(url, name, features) {
                 window.location.href = url;
                 return null;
@@ -178,7 +184,6 @@ fn main() {
                 }
             };
 
-            // Polling co 1s zamiast MutationObserver (Google Chat zmienia tytul przez przypisanie)
             setInterval(() => {
                 const title = document.title;
                 const isNewMsg = title && (title.match(/^\(\d+\)/) || title.includes("Masz wiadomo") || title.includes("napisa") || title.includes("says") || title.includes("sent a message"));
@@ -199,12 +204,13 @@ fn main() {
                             title: safeTitle,
                             body: "Sprawdź Google Chat"
                         });
+                        invokeTauri('set_tray_alert', { alert: true });
                     }
                 } else {
-                    // Cooldown 5s - Google Chat migocze tytulem, nie zamykaj od razu
                     if (hasNotified && (Date.now() - lastNotifyTime > 5000)) {
                         hasNotified = false;
                         invokeTauri('close_notification_window', {});
+                        invokeTauri('set_tray_alert', { alert: false });
                     }
                 }
             }, 1000);
@@ -213,6 +219,7 @@ fn main() {
                 if (hasNotified) {
                     hasNotified = false;
                     invokeTauri('close_notification_window', {});
+                    invokeTauri('set_tray_alert', { alert: false });
                 }
             });
         });
@@ -225,14 +232,15 @@ fn main() {
             create_notification_window,
             play_notification_sound,
             upload_file_stream,
-            close_notification_window
+            close_notification_window,
+            set_tray_alert
         ])
         .setup(move |app| {
             let show_menu = MenuItem::with_id(app, "show", "Pokaż", true, None::<&str>)?;
             let quit_menu = MenuItem::with_id(app, "quit", "Zakończ", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show_menu, &quit_menu])?;
             
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
                 .on_menu_event(|app, event| {
@@ -260,7 +268,7 @@ fn main() {
 
             #[cfg(not(target_os = "linux"))]
             {
-                let main_window = tauri::WebviewWindowBuilder::new(
+                let _ = tauri::WebviewWindowBuilder::new(
                     app,
                     "main",
                     tauri::WebviewUrl::External("https://chat.google.com".parse().unwrap())
@@ -269,13 +277,9 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .initialization_script(inject_script)
                 .build()?;
-
-                // Tymczasowo: otwórz DevTools żeby widzieć logi [ISM-Chat]
-                main_window.open_devtools();
             }
             #[cfg(target_os = "linux")]
             {
-                // Linux: WebKitGTK requires similar builder
                 let _ = tauri::WebviewWindowBuilder::new(
                     app,
                     "main",
