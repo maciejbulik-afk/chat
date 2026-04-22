@@ -1,0 +1,55 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index 04e9ea0..0912b99 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -26,8 +26,8 @@ jobs:
+       - name: Kompilacja Tauri (Tworzenie MSI)
+         run: npm run tauri build
+ 
+-      - name: Wystawienie wszystkiego co powstawalo (Opcja Nuklearna)
++      - name: Upload instalatora NSIS
+         uses: actions/upload-artifact@v4
+         with:
+-          name: Zrzut-Caly-Katalog
+-          path: src-tauri/target/release/
+\ No newline at end of file
++          name: Google-Chat-Windows-Installer
++          path: src-tauri/target/release/bundle/nsis/*.exe
+\ No newline at end of file
+diff --git a/.gitignore b/.gitignore
+index 919e7eb..ddca205 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -1,4 +1,3 @@
+ node_modules/
+ src-tauri/target/
+-src-tauri/target/
+-node_modules/
++.npm/
+diff --git a/src-tauri/tauri.conf.json b/src-tauri/tauri.conf.json
+index 7060cf1..c656dd1 100644
+--- a/src-tauri/tauri.conf.json
++++ b/src-tauri/tauri.conf.json
+@@ -8,6 +8,21 @@
+     "devUrl": "http://localhost:1420",
+     "frontendDist": "../dist"
+   },
++  "bundle": {
++    "active": true,
++    "targets": ["nsis"],
++    "icon": [
++      "icons/32x32.png",
++      "icons/128x128.png",
++      "icons/icon.ico"
++    ],
++    "windows": {
++      "webviewInstallMode": {
++        "type": "embedBootstrapper",
++        "silent": true
++      }
++    }
++  },
+   "app": {
+     "withGlobalTauri": true,
+     "security": {
+
