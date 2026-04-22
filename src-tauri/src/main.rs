@@ -152,6 +152,8 @@ fn main() {
         window.addEventListener('DOMContentLoaded', () => {
             let hasNotified = false;
 
+            console.log('[ISM-Chat] Skrypt wstrzykniety, czekam na Tauri IPC...');
+
             // Wymuszamy aby wyskakujace okna logowania otwieraly sie w naszej aplikacji Tauri (blokowanie target="_blank")
             window.open = function(url, name, features) {
                 window.location.href = url;
@@ -161,21 +163,29 @@ fn main() {
             document.addEventListener('click', (e) => {
                 const a = e.target.closest('a');
                 if (a && a.target === '_blank') {
-                    // Przechwytywacz zmusza Google do przejscia dalej wewnatrz glownego okna zamiast gubic akcje
                     a.target = '_self';
                 }
             }, true);
 
             const invokeTauri = (cmd, args) => {
                 if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-                    window.__TAURI__.core.invoke(cmd, args).catch(console.error);
+                    console.log('[ISM-Chat] invoke:', cmd, args);
+                    window.__TAURI__.core.invoke(cmd, args).catch(e => console.error('[ISM-Chat] invoke BLAD:', cmd, e));
                 } else if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) {
-                    window.__TAURI_INTERNALS__.invoke(cmd, args).catch(console.error);
+                    console.log('[ISM-Chat] invoke (internals):', cmd, args);
+                    window.__TAURI_INTERNALS__.invoke(cmd, args).catch(e => console.error('[ISM-Chat] invoke BLAD:', cmd, e));
                 } else {
-                    console.error("No Tauri IPC found.");
+                    console.error('[ISM-Chat] Brak Tauri IPC! __TAURI__=', typeof window.__TAURI__, '__TAURI_INTERNALS__=', typeof window.__TAURI_INTERNALS__);
                 }
             };
             
+            // Diagnostyka: sprawdz czy IPC jest dostepne po 2s
+            setTimeout(() => {
+                const hasTauri = !!(window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke);
+                const hasInternals = !!(window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke);
+                console.log('[ISM-Chat] IPC status po 2s: __TAURI__=' + hasTauri + ', __TAURI_INTERNALS__=' + hasInternals);
+            }, 2000);
+
             const checkTitle = () => {
                 const title = document.title;
                 if (title && (title.match(/^\(\d+\)/) || title.includes("napisa") || title.includes("says") || title.includes("sent a message"))) {
@@ -185,6 +195,7 @@ fn main() {
                         if (title.includes("napisa")) {
                             safeTitle = title.split(" -")[0] || title;
                         }
+                        console.log('[ISM-Chat] Nowa wiadomosc wykryta, tytul:', safeTitle);
                         invokeTauri('play_notification_sound', { volume: 0.5 });
                         invokeTauri('create_notification_window', { 
                             title: safeTitle, 

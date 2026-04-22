@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for development",
+  "description": "Capability for the main app and remote Google Chat",
   "windows": [
     "*"
   ],
@@ -9,12 +9,20 @@
     "core:default",
     "core:window:default",
     "core:window:allow-close",
+    "core:window:allow-create",
+    "core:window:allow-set-position",
+    "core:window:allow-primary-monitor",
+    "core:window:allow-outer-size",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-unminimize",
     "dialog:default",
     "shell:default",
     "shell:allow-open",
     "allow-invoke"
   ],
   "remote": {
-    "urls": ["https://chat.google.com"]
+    "urls": ["https://chat.google.com/*"]
   }
 }
