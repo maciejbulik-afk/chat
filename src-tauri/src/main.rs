@@ -186,9 +186,7 @@ fn main() {
             window.__ISM_CHAT_INIT = true;
 
             let trayAlertActive = false;
-            let lastNotifyTime = 0;
             let lastCount = 0;
-            const COOLDOWN = 10000;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -241,15 +239,11 @@ fn main() {
 
             setInterval(() => {
                 const count = getUnreadCount();
-                const now = Date.now();
 
                 if (count > 0) {
-                    // Pokaz powiadomienie gdy:
-                    // - count wzrosl (nowy rozmowca) -> natychmiast
-                    // - minelo 10s od ostatniego powiadomienia (ten sam rozmowca, nowa wiadomosc)
-                    const isNewConversation = count > lastCount && lastCount >= 0;
-                    if (isNewConversation || (now - lastNotifyTime > COOLDOWN)) {
-                        lastNotifyTime = now;
+                    if (count > lastCount) {
+                        // Licznik wzrosl - nowa wiadomosc lub nowy rozmowca
+                        console.log('[ISM-Chat] Nowe nieprzeczytane:', count, '(bylo:', lastCount + ')');
                         showNotification();
                     }
 
@@ -264,7 +258,6 @@ fn main() {
                         invokeTauri('close_notification_window', {}).catch(() => {});
                         invokeTauri('set_tray_alert', { alert: false }).catch(() => {});
                     }
-                    lastNotifyTime = 0;
                 }
 
                 lastCount = count;
@@ -272,7 +265,6 @@ fn main() {
 
             window.addEventListener('focus', () => {
                 invokeTauri('close_notification_window', {}).catch(() => {});
-                lastNotifyTime = Date.now();
             });
         });
     "#;
