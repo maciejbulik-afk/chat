@@ -183,7 +183,9 @@ fn main() {
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
             let trayAlertActive = false;
-            let focusCooldownUntil = 0;
+            let lastNotifyTime = 0;
+            let lastCount = 0;
+            const COOLDOWN = 10000;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -232,25 +234,19 @@ fn main() {
                     title: safeTitle,
                     body: "Sprawdź Google Chat"
                 }).catch(() => {});
-                if (!trayAlertActive) {
-                    trayAlertActive = true;
-                    invokeTauri('set_tray_alert', { alert: true }).catch(() => {});
-                }
             };
 
-            setInterval(async () => {
+            setInterval(() => {
                 const count = getUnreadCount();
+                const now = Date.now();
 
                 if (count > 0) {
-                    // Sprawdz czy okienko powiadomienia istnieje
-                    let windowExists = false;
-                    try {
-                        windowExists = await invokeTauri('has_notification_window');
-                    } catch(e) {}
-
-                    if (!windowExists && Date.now() > focusCooldownUntil) {
-                        // Okienko nie istnieje (zamkniete X-em lub jeszcze nie utworzone)
-                        // i nie jestesmy w cooldownie po focus -> pokaz powiadomienie
+                    // Pokaz powiadomienie gdy:
+                    // - count wzrosl (nowy rozmowca) -> natychmiast
+                    // - minelo 10s od ostatniego powiadomienia (ten sam rozmowca, nowa wiadomosc)
+                    const isNewConversation = count > lastCount && lastCount >= 0;
+                    if (isNewConversation || (now - lastNotifyTime > COOLDOWN)) {
+                        lastNotifyTime = now;
                         showNotification();
                     }
 
@@ -265,14 +261,15 @@ fn main() {
                         invokeTauri('close_notification_window', {}).catch(() => {});
                         invokeTauri('set_tray_alert', { alert: false }).catch(() => {});
                     }
+                    lastNotifyTime = 0;
                 }
+
+                lastCount = count;
             }, 2000);
 
             window.addEventListener('focus', () => {
-                // Zamknij okienko ale daj cooldown 6s zeby nie re-pokazywac
-                // zanim uzytkownik zdazy przeczytac wiadomosci
                 invokeTauri('close_notification_window', {}).catch(() => {});
-                focusCooldownUntil = Date.now() + 6000;
+                lastNotifyTime = Date.now();
             });
         });
     "#;
