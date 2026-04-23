@@ -162,6 +162,15 @@ fn close_notification_window(#[allow(unused_variables)] app: tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+fn show_main_window(app: tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 fn main() {
     #[cfg(target_os = "linux")]
     std::env::set_var("GDK_BACKEND", "x11");
@@ -169,7 +178,6 @@ fn main() {
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
             let hasNotified = false;
-            let lastNotifyTime = 0;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -199,7 +207,6 @@ fn main() {
                 if (isNewMsg) {
                     if (!hasNotified) {
                         hasNotified = true;
-                        lastNotifyTime = Date.now();
                         let safeTitle = "Nowa wiadomość";
                         if (title.includes("od:")) {
                             safeTitle = title.split(" - ")[0] || title;
@@ -215,7 +222,8 @@ fn main() {
                         invokeTauri('set_tray_alert', { alert: true });
                     }
                 } else {
-                    if (hasNotified && (Date.now() - lastNotifyTime > 5000)) {
+                    // Wiadomosci odczytane (tytul wrocil do normy)
+                    if (hasNotified) {
                         hasNotified = false;
                         invokeTauri('close_notification_window', {});
                         invokeTauri('set_tray_alert', { alert: false });
@@ -225,9 +233,8 @@ fn main() {
 
             window.addEventListener('focus', () => {
                 if (hasNotified) {
-                    hasNotified = false;
+                    // Zamknij okienko, ale tray alert zostaje do odczytania wiadomosci
                     invokeTauri('close_notification_window', {});
-                    invokeTauri('set_tray_alert', { alert: false });
                 }
             });
         });
@@ -241,6 +248,7 @@ fn main() {
             play_notification_sound,
             upload_file_stream,
             close_notification_window,
+            show_main_window,
             set_tray_alert
         ])
         .setup(move |app| {

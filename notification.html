@@ -25,6 +25,7 @@
         padding: 0 20px;
         border-left: 4px solid #e74c3c;
         animation: pulse-bg 2s ease-in-out infinite;
+        position: relative;
       }
       .icon {
         flex-shrink: 0;
@@ -55,6 +56,26 @@
         color: #888;
         margin-top: 2px;
       }
+      .close-btn {
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        width: 20px;
+        height: 20px;
+        border: none;
+        background: rgba(255,255,255,0.1);
+        color: #888;
+        font-size: 14px;
+        line-height: 20px;
+        text-align: center;
+        border-radius: 4px;
+        cursor: pointer;
+        padding: 0;
+      }
+      .close-btn:hover {
+        background: rgba(231, 76, 60, 0.5);
+        color: #fff;
+      }
       @keyframes pulse-bg {
         0%, 100% { background: rgba(231, 76, 60, 0.08); }
         50% { background: rgba(231, 76, 60, 0.15); }
@@ -66,18 +87,20 @@
     </style>
   </head>
   <body>
-    <div class="notification">
+    <div class="notification" id="notif-body">
       <div class="icon">💬</div>
       <div class="text">
         <div class="title" id="notif-title">Nowa wiadomość</div>
-        <div class="subtitle">Kliknij aby otworzyć</div>
+        <div class="subtitle">Kliknij aby otworzyć czat</div>
       </div>
+      <button class="close-btn" id="close-btn" title="Zamknij powiadomienie">✕</button>
     </div>
     <script type="module">
       import { getCurrentWindow } from '@tauri-apps/api/window';
-      
+      const { invoke } = window.__TAURI__.core;
       const win = getCurrentWindow();
 
+      // Wyswietl nazwe nadawcy z tytulu okna
       (async () => {
         try {
           const t = await win.title();
@@ -87,7 +110,18 @@
         } catch(e) {}
       })();
 
-      document.body.addEventListener('click', async () => {
+      // Klikniecie w powiadomienie -> pokaz okno chata + zamknij powiadomienie
+      document.getElementById('notif-body').addEventListener('click', async (e) => {
+        if (e.target.id === 'close-btn') return;
+        try {
+          await invoke('show_main_window');
+          await win.close();
+        } catch(e) { console.error(e); }
+      });
+
+      // X -> zamknij tylko to okienko (tray alert zostaje)
+      document.getElementById('close-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
         try { await win.close(); } catch(e) {}
       });
     </script>
