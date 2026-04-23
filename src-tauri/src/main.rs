@@ -242,8 +242,8 @@ fn main() {
 
                 if (count > 0) {
                     if (count > lastCount) {
-                        // Licznik wzrosl - nowa wiadomosc lub nowy rozmowca
-                        console.log('[ISM-Chat] Nowe nieprzeczytane:', count, '(bylo:', lastCount + ')');
+                        // Nowy rozmowca - natychmiast
+                        console.log('[ISM-Chat] Nowy rozmowca, count:', count);
                         showNotification();
                     }
 
@@ -262,6 +262,30 @@ fn main() {
 
                 lastCount = count;
             }, 2000);
+
+            // === Przechwycenie Notification API ===
+            // Google Chat wywoluje new Notification() przy kazdej nowej wiadomosci
+            // Dziala niezaleznie od licznika nieprzeczytanych rozmow
+            const NativeNotification = window.Notification;
+            const ProxyNotification = function(title, options) {
+                const instance = new NativeNotification(title, options);
+                console.log('[ISM-Chat] Notification API:', title);
+                showNotification();
+                if (!trayAlertActive) {
+                    trayAlertActive = true;
+                    invokeTauri('set_tray_alert', { alert: true }).catch(() => {});
+                }
+                return instance;
+            };
+            Object.assign(ProxyNotification, NativeNotification);
+            ProxyNotification.prototype = NativeNotification.prototype;
+            Object.defineProperty(ProxyNotification, 'permission', {
+                get: () => 'granted'
+            });
+            window.Notification = ProxyNotification;
+
+            // Upewnij sie ze requestPermission tez zwraca granted
+            ProxyNotification.requestPermission = () => Promise.resolve('granted');
 
             window.addEventListener('focus', () => {
                 invokeTauri('close_notification_window', {}).catch(() => {});
