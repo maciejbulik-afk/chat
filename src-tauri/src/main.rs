@@ -182,6 +182,9 @@ fn main() {
 
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
+            if (window.__ISM_CHAT_INIT) return;
+            window.__ISM_CHAT_INIT = true;
+
             let trayAlertActive = false;
             let lastNotifyTime = 0;
             let lastCount = 0;
