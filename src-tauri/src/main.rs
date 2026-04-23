@@ -9,8 +9,16 @@ use tauri::{AppHandle, WebviewWindowBuilder, WebviewUrl};
 #[cfg(target_os = "linux")]
 use tauri::AppHandle;
 
-use tauri::image::Image;
+use tauri::image::Image as TauriImage;
+use image::GenericImageView;
 use rodio::{Decoder, OutputStream, Sink};
+
+fn png_to_tauri_icon(png_bytes: &[u8]) -> TauriImage<'static> {
+    let img = image::load_from_memory(png_bytes).expect("Nie udalo sie zdekodowac ikony PNG");
+    let rgba = img.to_rgba8();
+    let (w, h) = img.dimensions();
+    TauriImage::new_owned(rgba.into_raw(), w, h)
+}
 use std::fs::File;
 use std::thread;
 use std::io::BufReader;
@@ -26,8 +34,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(not(target_os = "linux"))]
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.png");
-static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.png");
+static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.rgba");
+static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.rgba");
 
 #[tauri::command]
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
@@ -93,7 +101,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
 fn set_tray_alert(app: AppHandle, alert: bool) -> Result<(), String> {
     if let Some(tray) = app.tray_by_id("main-tray") {
         let icon_bytes = if alert { ICON_ALERT } else { ICON_NORMAL };
-        let icon = Image::from_bytes(icon_bytes).map_err(|e| e.to_string())?;
+        let icon = png_to_tauri_icon(icon_bytes);
         tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
     }
     Ok(())
