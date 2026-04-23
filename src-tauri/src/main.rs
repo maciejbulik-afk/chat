@@ -163,6 +163,11 @@ fn close_notification_window(#[allow(unused_variables)] app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn has_notification_window(app: tauri::AppHandle) -> bool {
+    app.webview_windows().iter().any(|(label, _)| label.starts_with("notif_"))
+}
+
+#[tauri::command]
 fn show_main_window(app: tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -177,8 +182,8 @@ fn main() {
 
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
-            let lastUnreadCount = 0;
             let trayAlertActive = false;
+            let focusCooldownUntil = 0;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -196,9 +201,9 @@ fn main() {
 
             const invokeTauri = (cmd, args) => {
                 if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
-                    console.log('[ISM-Chat] invoke:', cmd);
-                    window.__TAURI__.core.invoke(cmd, args).catch(e => console.error('[ISM-Chat] invoke BLAD:', cmd, e));
+                    return window.__TAURI__.core.invoke(cmd, args);
                 }
+                return Promise.reject('No IPC');
             };
 
             const getUnreadCount = () => {
@@ -207,7 +212,6 @@ fn main() {
                     const m = el.textContent.match(/\d+/);
                     if (m) return parseInt(m[0], 10);
                 }
-                // Fallback: tytul strony
                 const t = document.title;
                 if (t && (t.includes("Masz wiadomo") || t.includes("napisa") || t.includes("says") || t.match(/^\(\d+\)/))) {
                     return 1;
@@ -215,43 +219,60 @@ fn main() {
                 return 0;
             };
 
-            setInterval(() => {
+            const showNotification = () => {
+                const t = document.title;
+                let safeTitle = "Nowa wiadomość";
+                if (t.includes("od:")) {
+                    safeTitle = t.split(" - ")[0] || safeTitle;
+                }
+                console.log('[ISM-Chat] Pokazuje powiadomienie:', safeTitle);
+                invokeTauri('close_notification_window', {}).catch(() => {});
+                invokeTauri('play_notification_sound', { volume: 0.5 }).catch(() => {});
+                invokeTauri('create_notification_window', {
+                    title: safeTitle,
+                    body: "Sprawdź Google Chat"
+                }).catch(() => {});
+                if (!trayAlertActive) {
+                    trayAlertActive = true;
+                    invokeTauri('set_tray_alert', { alert: true }).catch(() => {});
+                }
+            };
+
+            setInterval(async () => {
                 const count = getUnreadCount();
 
-                if (count > lastUnreadCount) {
-                    // Nowe wiadomosci - pokaz powiadomienie
-                    const t = document.title;
-                    let safeTitle = "Nowa wiadomość";
-                    if (t.includes("od:")) {
-                        safeTitle = t.split(" - ")[0] || safeTitle;
+                if (count > 0) {
+                    // Sprawdz czy okienko powiadomienia istnieje
+                    let windowExists = false;
+                    try {
+                        windowExists = await invokeTauri('has_notification_window');
+                    } catch(e) {}
+
+                    if (!windowExists && Date.now() > focusCooldownUntil) {
+                        // Okienko nie istnieje (zamkniete X-em lub jeszcze nie utworzone)
+                        // i nie jestesmy w cooldownie po focus -> pokaz powiadomienie
+                        showNotification();
                     }
-                    console.log('[ISM-Chat] Nowe wiadomosci:', count, '(bylo:', lastUnreadCount + ')');
-                    // Zamknij stare okienko zanim pokaze nowe
-                    invokeTauri('close_notification_window', {});
-                    invokeTauri('play_notification_sound', { volume: 0.5 });
-                    invokeTauri('create_notification_window', {
-                        title: safeTitle,
-                        body: "Sprawdź Google Chat"
-                    });
+
                     if (!trayAlertActive) {
                         trayAlertActive = true;
-                        invokeTauri('set_tray_alert', { alert: true });
+                        invokeTauri('set_tray_alert', { alert: true }).catch(() => {});
                     }
-                } else if (count === 0 && trayAlertActive) {
-                    // Wszystko odczytane
-                    console.log('[ISM-Chat] Wszystko odczytane');
-                    trayAlertActive = false;
-                    invokeTauri('close_notification_window', {});
-                    invokeTauri('set_tray_alert', { alert: false });
+                } else {
+                    if (trayAlertActive) {
+                        trayAlertActive = false;
+                        console.log('[ISM-Chat] Wszystko odczytane');
+                        invokeTauri('close_notification_window', {}).catch(() => {});
+                        invokeTauri('set_tray_alert', { alert: false }).catch(() => {});
+                    }
                 }
-
-                lastUnreadCount = count;
             }, 2000);
 
             window.addEventListener('focus', () => {
-                if (trayAlertActive) {
-                    invokeTauri('close_notification_window', {});
-                }
+                // Zamknij okienko ale daj cooldown 6s zeby nie re-pokazywac
+                // zanim uzytkownik zdazy przeczytac wiadomosci
+                invokeTauri('close_notification_window', {}).catch(() => {});
+                focusCooldownUntil = Date.now() + 6000;
             });
         });
     "#;
@@ -264,6 +285,7 @@ fn main() {
             play_notification_sound,
             upload_file_stream,
             close_notification_window,
+            has_notification_window,
             show_main_window,
             set_tray_alert
         ])
