@@ -178,7 +178,6 @@ fn main() {
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
             let hasNotified = false;
-            let activeNotifications = 0;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -201,71 +200,42 @@ fn main() {
                 }
             };
 
-            // === 1. Przechwycenie window.Notification ===
-            // Google Chat wywoluje new Notification() przy nowej wiadomosci
-            const NativeNotification = window.Notification;
-
-            const ProxyNotification = function(title, options) {
-                const instance = new NativeNotification(title, options);
-                activeNotifications++;
-                console.log('[ISM-Chat] Notification przechwycony:', title, 'aktywne:', activeNotifications);
-
-                if (!hasNotified) {
-                    hasNotified = true;
-                    invokeTauri('play_notification_sound', { volume: 0.5 });
-                    invokeTauri('create_notification_window', {
-                        title: title || "Nowa wiadomość",
-                        body: (options && options.body) || "Sprawdź Google Chat"
-                    });
-                    invokeTauri('set_tray_alert', { alert: true });
-                }
-
-                instance.addEventListener('close', () => {
-                    activeNotifications = Math.max(0, activeNotifications - 1);
-                    console.log('[ISM-Chat] Notification zamkniety, aktywne:', activeNotifications);
-                });
-
-                return instance;
+            const hasUnread = () => {
+                // Szukamy diva z aria-label zawierajacym "nieprzeczytan"
+                const el = document.querySelector('div[aria-label*="nieprzeczytan"]');
+                if (el) return true;
+                // Fallback: tytul strony
+                const t = document.title;
+                return t && (t.includes("Masz wiadomo") || t.includes("napisa") || t.includes("says") || t.match(/^\(\d+\)/));
             };
 
-            Object.assign(ProxyNotification, NativeNotification);
-            ProxyNotification.prototype = NativeNotification.prototype;
-            window.Notification = ProxyNotification;
-
-            // === 2. Szukanie nieprzeczytanych w DOM (polski UI) ===
-            const searchAriaLabel = (root, text) => {
-                if (root.nodeType === Node.ELEMENT_NODE) {
-                    const label = root.getAttribute && root.getAttribute('aria-label');
-                    if (label && label.includes(text)) return root;
-                    for (const child of root.childNodes) {
-                        const found = searchAriaLabel(child, text);
-                        if (found) return found;
+            setInterval(() => {
+                if (hasUnread()) {
+                    if (!hasNotified) {
+                        hasNotified = true;
+                        // Sprobuj wyciagnac nazwe nadawcy z tytulu
+                        const t = document.title;
+                        let safeTitle = "Nowa wiadomość";
+                        if (t.includes("od:")) {
+                            safeTitle = t.split(" - ")[0] || safeTitle;
+                        }
+                        console.log('[ISM-Chat] Nieprzeczytane wykryte, tytul:', safeTitle);
+                        invokeTauri('play_notification_sound', { volume: 0.5 });
+                        invokeTauri('create_notification_window', {
+                            title: safeTitle,
+                            body: "Sprawdź Google Chat"
+                        });
+                        invokeTauri('set_tray_alert', { alert: true });
+                    }
+                } else {
+                    if (hasNotified) {
+                        hasNotified = false;
+                        console.log('[ISM-Chat] Wszystko odczytane');
+                        invokeTauri('close_notification_window', {});
+                        invokeTauri('set_tray_alert', { alert: false });
                     }
                 }
-                return null;
-            };
-
-            const getUnreadCount = () => {
-                // Szukaj po polsku i angielsku
-                const el = searchAriaLabel(document.documentElement, "nieprzeczytan")
-                        || searchAriaLabel(document.documentElement, "unread");
-                if (el && el.textContent) {
-                    const m = el.textContent.match(/\d+/);
-                    if (m) return parseInt(m[0], 10);
-                }
-                return 0;
-            };
-
-            // === 3. Polling co 3s - sprawdza czy wiadomosci odczytane ===
-            setInterval(() => {
-                const count = getUnreadCount();
-                if (count === 0 && hasNotified && activeNotifications === 0) {
-                    hasNotified = false;
-                    console.log('[ISM-Chat] Wszystko odczytane');
-                    invokeTauri('close_notification_window', {});
-                    invokeTauri('set_tray_alert', { alert: false });
-                }
-            }, 3000);
+            }, 2000);
 
             window.addEventListener('focus', () => {
                 if (hasNotified) {
