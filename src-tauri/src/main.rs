@@ -177,7 +177,8 @@ fn main() {
 
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
-            let hasNotified = false;
+            let lastUnreadCount = 0;
+            let trayAlertActive = false;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -200,45 +201,55 @@ fn main() {
                 }
             };
 
-            const hasUnread = () => {
-                // Szukamy diva z aria-label zawierajacym "nieprzeczytan"
+            const getUnreadCount = () => {
                 const el = document.querySelector('div[aria-label*="nieprzeczytan"]');
-                if (el) return true;
+                if (el && el.textContent) {
+                    const m = el.textContent.match(/\d+/);
+                    if (m) return parseInt(m[0], 10);
+                }
                 // Fallback: tytul strony
                 const t = document.title;
-                return t && (t.includes("Masz wiadomo") || t.includes("napisa") || t.includes("says") || t.match(/^\(\d+\)/));
+                if (t && (t.includes("Masz wiadomo") || t.includes("napisa") || t.includes("says") || t.match(/^\(\d+\)/))) {
+                    return 1;
+                }
+                return 0;
             };
 
             setInterval(() => {
-                if (hasUnread()) {
-                    if (!hasNotified) {
-                        hasNotified = true;
-                        // Sprobuj wyciagnac nazwe nadawcy z tytulu
-                        const t = document.title;
-                        let safeTitle = "Nowa wiadomość";
-                        if (t.includes("od:")) {
-                            safeTitle = t.split(" - ")[0] || safeTitle;
-                        }
-                        console.log('[ISM-Chat] Nieprzeczytane wykryte, tytul:', safeTitle);
-                        invokeTauri('play_notification_sound', { volume: 0.5 });
-                        invokeTauri('create_notification_window', {
-                            title: safeTitle,
-                            body: "Sprawdź Google Chat"
-                        });
+                const count = getUnreadCount();
+
+                if (count > lastUnreadCount) {
+                    // Nowe wiadomosci - pokaz powiadomienie
+                    const t = document.title;
+                    let safeTitle = "Nowa wiadomość";
+                    if (t.includes("od:")) {
+                        safeTitle = t.split(" - ")[0] || safeTitle;
+                    }
+                    console.log('[ISM-Chat] Nowe wiadomosci:', count, '(bylo:', lastUnreadCount + ')');
+                    // Zamknij stare okienko zanim pokaze nowe
+                    invokeTauri('close_notification_window', {});
+                    invokeTauri('play_notification_sound', { volume: 0.5 });
+                    invokeTauri('create_notification_window', {
+                        title: safeTitle,
+                        body: "Sprawdź Google Chat"
+                    });
+                    if (!trayAlertActive) {
+                        trayAlertActive = true;
                         invokeTauri('set_tray_alert', { alert: true });
                     }
-                } else {
-                    if (hasNotified) {
-                        hasNotified = false;
-                        console.log('[ISM-Chat] Wszystko odczytane');
-                        invokeTauri('close_notification_window', {});
-                        invokeTauri('set_tray_alert', { alert: false });
-                    }
+                } else if (count === 0 && trayAlertActive) {
+                    // Wszystko odczytane
+                    console.log('[ISM-Chat] Wszystko odczytane');
+                    trayAlertActive = false;
+                    invokeTauri('close_notification_window', {});
+                    invokeTauri('set_tray_alert', { alert: false });
                 }
+
+                lastUnreadCount = count;
             }, 2000);
 
             window.addEventListener('focus', () => {
-                if (hasNotified) {
+                if (trayAlertActive) {
                     invokeTauri('close_notification_window', {});
                 }
             });
