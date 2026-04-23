@@ -178,6 +178,7 @@ fn main() {
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
             let hasNotified = false;
+            let lastUnreadCount = 0;
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
@@ -200,40 +201,69 @@ fn main() {
                 }
             };
 
-            setInterval(() => {
-                const title = document.title;
-                const isNewMsg = title && (title.match(/^\(\d+\)/) || title.includes("Masz wiadomo") || title.includes("napisa") || title.includes("says") || title.includes("sent a message"));
-
-                if (isNewMsg) {
-                    if (!hasNotified) {
-                        hasNotified = true;
-                        let safeTitle = "Nowa wiadomość";
-                        if (title.includes("od:")) {
-                            safeTitle = title.split(" - ")[0] || title;
-                        } else if (title.includes("napisa")) {
-                            safeTitle = title.split(" -")[0] || title;
-                        }
-                        console.log('[ISM-Chat] Nowa wiadomosc:', safeTitle);
-                        invokeTauri('play_notification_sound', { volume: 0.5 });
-                        invokeTauri('create_notification_window', {
-                            title: safeTitle,
-                            body: "Sprawdź Google Chat"
-                        });
-                        invokeTauri('set_tray_alert', { alert: true });
-                    }
-                } else {
-                    // Wiadomosci odczytane (tytul wrocil do normy)
-                    if (hasNotified) {
-                        hasNotified = false;
-                        invokeTauri('close_notification_window', {});
-                        invokeTauri('set_tray_alert', { alert: false });
-                    }
+            const getUnreadCount = () => {
+                const span = document.querySelector('span[aria-label="Unread count"]');
+                if (span && span.textContent) {
+                    const n = parseInt(span.textContent, 10);
+                    return isNaN(n) ? 0 : n;
                 }
-            }, 1000);
+                return 0;
+            };
+
+            const checkUnread = () => {
+                const count = getUnreadCount();
+
+                if (count > 0 && !hasNotified) {
+                    hasNotified = true;
+                    lastUnreadCount = count;
+                    const safeTitle = count === 1 ? "Nowa wiadomość" : "Nowe wiadomości (" + count + ")";
+                    console.log('[ISM-Chat] Nieprzeczytane:', count);
+                    invokeTauri('play_notification_sound', { volume: 0.5 });
+                    invokeTauri('create_notification_window', {
+                        title: safeTitle,
+                        body: "Sprawdź Google Chat"
+                    });
+                    invokeTauri('set_tray_alert', { alert: true });
+                } else if (count > lastUnreadCount && hasNotified) {
+                    // Wiecej nowych wiadomosci niz ostatnio - aktualizuj
+                    lastUnreadCount = count;
+                    console.log('[ISM-Chat] Wiecej nieprzeczytanych:', count);
+                } else if (count === 0 && hasNotified) {
+                    hasNotified = false;
+                    lastUnreadCount = 0;
+                    console.log('[ISM-Chat] Wszystko odczytane');
+                    invokeTauri('close_notification_window', {});
+                    invokeTauri('set_tray_alert', { alert: false });
+                }
+            };
+
+            // Probuj podpiac MutationObserver do nawigacji Google Chat
+            const initObserver = () => {
+                const nav = document.querySelector('div[role="navigation"]');
+                if (nav) {
+                    console.log('[ISM-Chat] Observer podpiety do nawigacji');
+                    const observer = new MutationObserver(() => checkUnread());
+                    observer.observe(nav, { childList: true, subtree: true, characterData: true });
+                    checkUnread();
+                    return true;
+                }
+                return false;
+            };
+
+            // Google Chat laduje sie dynamicznie - czekaj az nawigacja sie pojawi
+            if (!initObserver()) {
+                const waitForNav = setInterval(() => {
+                    if (initObserver()) {
+                        clearInterval(waitForNav);
+                    }
+                }, 2000);
+            }
+
+            // Polling co 5s jako zabezpieczenie gdyby Observer cos przegapil
+            setInterval(() => checkUnread(), 5000);
 
             window.addEventListener('focus', () => {
                 if (hasNotified) {
-                    // Zamknij okienko, ale tray alert zostaje do odczytania wiadomosci
                     invokeTauri('close_notification_window', {});
                 }
             });

@@ -21,6 +21,11 @@ jobs:
       - name: Instalacja środowiska Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - name: Kompilacja Tauri
         run: npm run tauri build -- --bundles nsis
 
@@ -51,6 +56,11 @@ jobs:
 
       - name: Instalacja środowiska Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: Kompilacja Tauri
         run: npm run tauri build -- --bundles appimage,rpm
