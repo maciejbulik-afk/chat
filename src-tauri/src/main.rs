@@ -348,8 +348,11 @@ fn main() {
         })
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close();
-                let _ = window.hide();
+                if window.label() == "main" {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                // Okna notyfikacji (notif_*) zamykaja sie normalnie
             }
             _ => {}
         })
