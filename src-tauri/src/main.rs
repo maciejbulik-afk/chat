@@ -34,8 +34,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 #[cfg(not(target_os = "linux"))]
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
-static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.rgba");
-static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.rgba");
+static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.png");
+static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.png");
 
 #[tauri::command]
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
