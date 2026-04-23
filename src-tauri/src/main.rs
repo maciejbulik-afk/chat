@@ -222,7 +222,13 @@ fn main() {
                 return 0;
             };
 
+            let lastShowTime = 0;
+
             const showNotification = () => {
+                const now = Date.now();
+                if (now - lastShowTime < 3000) return;
+                lastShowTime = now;
+
                 const t = document.title;
                 let safeTitle = "Nowa wiadomość";
                 if (t.includes("od:")) {
