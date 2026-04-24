@@ -38,6 +38,7 @@ fn png_to_tauri_icon(png_bytes: &[u8]) -> TauriImage<'static> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
     theme: String,
+    background: String,
     autostart: bool,
     start_minimized: bool,
     sound_volume: f32,
@@ -49,6 +50,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "red".into(),
+            background: "dark".into(),
             autostart: false,
             start_minimized: false,
             sound_volume: 0.5,
@@ -119,7 +121,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
     let _ = body;
     let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
     let label = format!("notif_{}", id);
-    let url = format!("notification.html?theme={}", settings.theme);
+    let url = format!("notification.html?theme={}&bg={}", settings.theme, settings.background);
 
     let window = WebviewWindowBuilder::new(
         &app,
@@ -127,9 +129,9 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         WebviewUrl::App(url.into())
     )
     .title(title)
-    .inner_size(360.0, 80.0)
-    .min_inner_size(360.0, 80.0)
-    .max_inner_size(360.0, 80.0)
+    .inner_size(360.0, 60.0)
+    .min_inner_size(360.0, 60.0)
+    .max_inner_size(360.0, 60.0)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
@@ -149,7 +151,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         let monitor_pos = monitor.position();
 
         let phys_w = (360.0 * scale_factor) as u32;
-        let phys_h = (80.0 * scale_factor) as u32;
+        let phys_h = (60.0 * scale_factor) as u32;
 
         let margin_x = (12.0 * scale_factor) as i32;
         let margin_y = (50.0 * scale_factor) as i32;
@@ -180,7 +182,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
                 let monitor_pos = monitor.position();
 
                 let phys_w = (360.0 * scale_factor) as u32;
-                let phys_h = (80.0 * scale_factor) as u32;
+                let phys_h = (60.0 * scale_factor) as u32;
 
                 let margin_x = (12.0 * scale_factor) as i32;
                 let margin_y = (50.0 * scale_factor) as i32;
@@ -276,7 +278,7 @@ fn open_settings_window(app: AppHandle) -> Result<(), String> {
 
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
         .title("Ustawienia — Google Chat by ism")
-        .inner_size(480.0, 520.0)
+        .inner_size(480.0, 600.0)
         .resizable(false)
         .center()
         .build()

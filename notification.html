@@ -12,58 +12,57 @@
       display: flex;
       align-items: center;
       height: 100vh;
-      background: #1a1a2e;
+      background: var(--bg);
       cursor: pointer;
       user-select: none;
     }
     .notification {
       display: flex;
       align-items: center;
-      gap: 14px;
+      gap: 12px;
       width: 100%;
       height: 100%;
-      padding: 0 20px;
+      padding: 0 16px;
       border-left: 4px solid var(--accent);
       animation: pulse-bg 2s ease-in-out infinite;
       position: relative;
     }
     .icon {
       flex-shrink: 0;
-      width: 36px;
-      height: 36px;
+      width: 32px; height: 32px;
       background: var(--accent);
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 18px;
+      font-size: 16px;
       animation: pulse-icon 2s ease-in-out infinite;
     }
     .text { flex: 1; min-width: 0; }
     .title {
       font-weight: 700;
-      font-size: 14px;
-      color: #fff;
+      font-size: 13px;
+      color: var(--fg);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+    .subtitle { font-size: 10px; color: var(--fg-dim); margin-top: 1px; }
     .close-btn {
       position: absolute;
-      top: 6px; right: 8px;
-      width: 20px; height: 20px;
+      top: 4px; right: 6px;
+      width: 18px; height: 18px;
       border: none;
-      background: rgba(255,255,255,0.1);
-      color: #888;
-      font-size: 14px;
-      line-height: 20px;
+      background: rgba(128,128,128,0.2);
+      color: var(--fg-dim);
+      font-size: 12px;
+      line-height: 18px;
       text-align: center;
       border-radius: 4px;
       cursor: pointer;
       padding: 0;
     }
-    .close-btn:hover { background: rgba(255,255,255,0.25); color: #fff; }
+    .close-btn:hover { background: rgba(128,128,128,0.4); color: var(--fg); }
     @keyframes pulse-bg {
       0%, 100% { background: color-mix(in srgb, var(--accent) 8%, transparent); }
       50% { background: color-mix(in srgb, var(--accent) 15%, transparent); }
@@ -72,14 +71,21 @@
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.1); }
     }
-    /* Themes */
-    :root { --accent: #e74c3c; }
+    /* Accent themes */
+    :root { --accent: #e74c3c; --bg: #1a1a2e; --fg: #fff; --fg-dim: #888; }
     body.theme-red    { --accent: #e74c3c; }
     body.theme-blue   { --accent: #3498db; }
     body.theme-green  { --accent: #2ecc71; }
     body.theme-purple { --accent: #9b59b6; }
     body.theme-orange { --accent: #e67e22; }
     body.theme-cyan   { --accent: #00bcd4; }
+    /* Background themes */
+    body.bg-dark      { --bg: #1a1a2e; --fg: #fff; --fg-dim: #888; }
+    body.bg-darker    { --bg: #0d0d1a; --fg: #e0e0e0; --fg-dim: #666; }
+    body.bg-charcoal  { --bg: #2d2d2d; --fg: #fff; --fg-dim: #999; }
+    body.bg-midnight  { --bg: #1a1a3e; --fg: #e8e8ff; --fg-dim: #7777aa; }
+    body.bg-light     { --bg: #f0f0f0; --fg: #222; --fg-dim: #666; }
+    body.bg-white     { --bg: #ffffff; --fg: #111; --fg-dim: #888; }
   </style>
 </head>
 <body>
@@ -89,19 +95,16 @@
       <div class="title" id="notif-title">Nowa wiadomość</div>
       <div class="subtitle">Kliknij aby otworzyć czat</div>
     </div>
-    <button class="close-btn" id="close-btn" title="Zamknij powiadomienie">✕</button>
+    <button class="close-btn" id="close-btn" title="Zamknij">✕</button>
   </div>
   <script type="module">
     import { getCurrentWindow } from '@tauri-apps/api/window';
     const { invoke } = window.__TAURI__.core;
     const win = getCurrentWindow();
 
-    // Ustaw motyw z query param
     const params = new URLSearchParams(window.location.search);
-    const theme = params.get('theme') || 'red';
-    document.body.className = 'theme-' + theme;
+    document.body.className = 'theme-' + (params.get('theme') || 'red') + ' bg-' + (params.get('bg') || 'dark');
 
-    // Wyswietl nazwe nadawcy
     (async () => {
       try {
         const t = await win.title();
@@ -111,7 +114,6 @@
       } catch(e) {}
     })();
 
-    // Klik -> pokaz czat + zamknij
     document.getElementById('notif-body').addEventListener('click', async (e) => {
       if (e.target.id === 'close-btn') return;
       try {
@@ -120,7 +122,6 @@
       } catch(e) {}
     });
 
-    // X -> zamknij tylko okienko
     document.getElementById('close-btn').addEventListener('click', async (e) => {
       e.stopPropagation();
       try { await win.close(); } catch(e) {}

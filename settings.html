@@ -145,6 +145,18 @@
   </div>
 
   <div class="section" style="margin-top: 36px;">
+    <div class="section-title">Tło powiadomień</div>
+    <div class="themes" id="backgrounds">
+      <div class="theme-btn" data-bg="dark"     data-label="Ciemny"    style="background:#1a1a2e;"></div>
+      <div class="theme-btn" data-bg="darker"   data-label="Czarny"    style="background:#0d0d1a;"></div>
+      <div class="theme-btn" data-bg="charcoal" data-label="Grafitowy" style="background:#2d2d2d;"></div>
+      <div class="theme-btn" data-bg="midnight" data-label="Nocny"     style="background:#1a1a3e;"></div>
+      <div class="theme-btn" data-bg="light"    data-label="Jasny"     style="background:#f0f0f0; border-color:#ccc;"></div>
+      <div class="theme-btn" data-bg="white"    data-label="Biały"     style="background:#ffffff; border-color:#ccc;"></div>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top: 36px;">
     <div class="section-title">Uruchamianie</div>
     <div class="toggle-row">
       <div>
@@ -213,12 +225,14 @@
     const win = getCurrentWindow();
 
     let currentTheme = 'red';
+    let currentBg = 'dark';
 
     // Zaladuj ustawienia
     (async () => {
       try {
         const s = await invoke('get_settings');
         currentTheme = s.theme || 'red';
+        currentBg = s.background || 'dark';
         document.getElementById('autostart').checked = s.autostart;
         document.getElementById('start_minimized').checked = s.start_minimized;
         document.getElementById('sound_enabled').checked = s.sound_enabled;
@@ -226,8 +240,8 @@
         document.getElementById('volume-val').textContent = Math.round(s.sound_volume * 100) + '%';
         document.getElementById('use_native_notifications').checked = s.use_native_notifications;
         updateThemeSelection();
+        updateBgSelection();
 
-        // Pokaz toggle natywnych powiadomien tylko na Linuxie
         if (navigator.platform.includes('Linux')) {
           document.getElementById('native-notif-section').style.display = '';
         }
@@ -236,8 +250,14 @@
 
     // Kolor powiadomien
     function updateThemeSelection() {
-      document.querySelectorAll('.theme-btn').forEach(btn => {
+      document.querySelectorAll('#themes .theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === currentTheme);
+      });
+    }
+
+    function updateBgSelection() {
+      document.querySelectorAll('#backgrounds .theme-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.bg === currentBg);
       });
     }
 
@@ -246,6 +266,14 @@
       if (btn) {
         currentTheme = btn.dataset.theme;
         updateThemeSelection();
+      }
+    });
+
+    document.getElementById('backgrounds').addEventListener('click', (e) => {
+      const btn = e.target.closest('.theme-btn');
+      if (btn) {
+        currentBg = btn.dataset.bg;
+        updateBgSelection();
       }
     });
 
@@ -258,6 +286,7 @@
     document.getElementById('btn-save').addEventListener('click', async () => {
       const settings = {
         theme: currentTheme,
+        background: currentBg,
         autostart: document.getElementById('autostart').checked,
         start_minimized: document.getElementById('start_minimized').checked,
         sound_enabled: document.getElementById('sound_enabled').checked,
