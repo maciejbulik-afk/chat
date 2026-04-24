@@ -107,7 +107,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         notify_rust::Notification::new()
             .summary(&title)
             .body(&body)
-            .appname("Google Chat")
+            .appname("Google Chat by ism")
             .icon("mail-message-new")
             .timeout(notify_rust::Timeout::Milliseconds(8000))
             .show()
@@ -128,6 +128,8 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
     )
     .title(title)
     .inner_size(360.0, 80.0)
+    .min_inner_size(360.0, 80.0)
+    .max_inner_size(360.0, 80.0)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
@@ -136,7 +138,12 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
     .build()
     .map_err(|e| e.to_string())?;
 
-    if let Ok(Some(monitor)) = window.primary_monitor() {
+    // Pozycjonuj na monitorze okna glownego (nie primary_monitor ktory moze zwrocic zly monitor)
+    let monitor = app.get_webview_window("main")
+        .and_then(|w| w.current_monitor().ok().flatten())
+        .or_else(|| window.primary_monitor().ok().flatten());
+
+    if let Some(monitor) = monitor {
         let scale_factor = monitor.scale_factor();
         let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
             (360.0 * scale_factor) as u32,
@@ -236,7 +243,7 @@ fn open_settings_window(app: AppHandle) -> Result<(), String> {
     }
 
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("Ustawienia — Google Chat")
+        .title("Ustawienia — Google Chat by ism")
         .inner_size(480.0, 520.0)
         .resizable(false)
         .center()
@@ -424,7 +431,7 @@ fn main() {
                     "main",
                     tauri::WebviewUrl::External("https://chat.google.com".parse().unwrap())
                 )
-                .title("Google Chat Native")
+                .title("Google Chat by ism")
                 .inner_size(1280.0, 800.0)
                 .visible(visible)
                 .initialization_script(inject_script)
