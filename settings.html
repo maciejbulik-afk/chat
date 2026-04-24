@@ -9,28 +9,24 @@
       font-family: 'Segoe UI', system-ui, sans-serif;
       background: #1a1a2e;
       color: #e0e0e0;
-      padding: 28px 32px;
+      padding: 24px 28px;
       user-select: none;
+      overflow-y: auto;
     }
-    h1 { font-size: 20px; color: #fff; margin-bottom: 24px; }
-    .section { margin-bottom: 24px; }
+    h1 { font-size: 20px; color: #fff; margin-bottom: 20px; }
+    .section { margin-bottom: 20px; }
     .section-title {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       color: #888;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
-    /* Color presets */
-    .themes {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
+    .themes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .theme-btn {
-      width: 48px; height: 48px;
-      border-radius: 10px;
+      width: 40px; height: 40px;
+      border-radius: 8px;
       border: 3px solid transparent;
       cursor: pointer;
       transition: border-color 0.2s, transform 0.15s;
@@ -41,10 +37,10 @@
     .theme-btn::after {
       content: attr(data-label);
       position: absolute;
-      bottom: -18px;
+      bottom: -16px;
       left: 50%;
       transform: translateX(-50%);
-      font-size: 10px;
+      font-size: 9px;
       color: #888;
       white-space: nowrap;
     }
@@ -54,15 +50,46 @@
     .theme-purple { background: #9b59b6; }
     .theme-orange { background: #e67e22; }
     .theme-cyan   { background: #00bcd4; }
-    /* Toggles */
+    /* Custom color picker styling */
+    .color-pick-wrap {
+      position: relative;
+      width: 40px; height: 40px;
+      border-radius: 8px;
+      border: 3px solid transparent;
+      overflow: hidden;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .color-pick-wrap:hover { transform: scale(1.1); }
+    .color-pick-wrap.active { border-color: #fff; }
+    .color-pick-wrap::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: -16px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 9px;
+      color: #888;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    .color-pick-wrap input[type="color"] {
+      position: absolute;
+      top: -4px; left: -4px;
+      width: 48px; height: 48px;
+      border: none;
+      cursor: pointer;
+      background: none;
+    }
+    /* Toggle rows */
     .toggle-row {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 0;
+      padding: 8px 0;
     }
-    .toggle-label { font-size: 14px; }
-    .toggle-desc { font-size: 11px; color: #666; margin-top: 2px; }
+    .toggle-label { font-size: 13px; }
+    .toggle-desc { font-size: 10px; color: #666; margin-top: 1px; }
     .toggle {
       position: relative;
       width: 44px; height: 24px;
@@ -87,22 +114,22 @@
     }
     .toggle input:checked + .slider { background: #2ecc71; }
     .toggle input:checked + .slider::before { transform: translateX(20px); }
-    /* Volume slider */
-    .volume-row {
+    /* Slider rows */
+    .slider-row {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 10px 0;
+      padding: 8px 0;
     }
-    .volume-row input[type="range"] {
+    .slider-row input[type="range"] {
       flex: 1;
       accent-color: #3498db;
       height: 6px;
     }
-    .volume-val { font-size: 13px; color: #888; min-width: 35px; text-align: right; }
-    /* Save button */
+    .slider-val { font-size: 12px; color: #888; min-width: 40px; text-align: right; }
+    /* Save bar */
     .save-bar {
-      margin-top: 28px;
+      margin-top: 20px;
       display: flex;
       justify-content: flex-end;
       gap: 10px;
@@ -141,22 +168,40 @@
       <div class="theme-btn theme-purple" data-theme="purple" data-label="Fioletowy"></div>
       <div class="theme-btn theme-orange" data-theme="orange" data-label="Pomarańcz."></div>
       <div class="theme-btn theme-cyan"   data-theme="cyan"   data-label="Cyjan"></div>
+      <div class="color-pick-wrap" id="custom-theme-wrap" data-label="Własny">
+        <input type="color" id="custom_theme" value="#e74c3c" />
+      </div>
     </div>
   </div>
 
-  <div class="section" style="margin-top: 36px;">
+  <div class="section" style="margin-top: 32px;">
     <div class="section-title">Tło powiadomień</div>
     <div class="themes" id="backgrounds">
       <div class="theme-btn" data-bg="dark"     data-label="Ciemny"    style="background:#1a1a2e;"></div>
       <div class="theme-btn" data-bg="darker"   data-label="Czarny"    style="background:#0d0d1a;"></div>
       <div class="theme-btn" data-bg="charcoal" data-label="Grafitowy" style="background:#2d2d2d;"></div>
       <div class="theme-btn" data-bg="midnight" data-label="Nocny"     style="background:#1a1a3e;"></div>
+      <div class="theme-btn" data-bg="red"      data-label="Czerwony"  style="background:#2e1a1a;"></div>
+      <div class="theme-btn" data-bg="green"    data-label="Zielony"   style="background:#1a2e1a;"></div>
+      <div class="theme-btn" data-bg="yellow"   data-label="Żółty"     style="background:#2e2e1a;"></div>
       <div class="theme-btn" data-bg="light"    data-label="Jasny"     style="background:#f0f0f0; border-color:#ccc;"></div>
       <div class="theme-btn" data-bg="white"    data-label="Biały"     style="background:#ffffff; border-color:#ccc;"></div>
+      <div class="color-pick-wrap" id="custom-bg-wrap" data-label="Własny">
+        <input type="color" id="custom_background" value="#1a1a2e" />
+      </div>
     </div>
   </div>
 
-  <div class="section" style="margin-top: 36px;">
+  <div class="section" style="margin-top: 32px;">
+    <div class="section-title">Rozmiar powiadomienia</div>
+    <div class="slider-row">
+      <span class="toggle-label">Wysokość</span>
+      <input type="range" id="notification_height" min="60" max="150" value="80" />
+      <span class="slider-val" id="height-val">80px</span>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-title">Uruchamianie</div>
     <div class="toggle-row">
       <div>
@@ -185,7 +230,7 @@
     <div class="toggle-row">
       <div>
         <div class="toggle-label">Natywne powiadomienia systemowe</div>
-        <div class="toggle-desc">Używa D-Bus zamiast popup'a (kolory nieaktywne)</div>
+        <div class="toggle-desc">Używa D-Bus zamiast popup'a</div>
       </div>
       <label class="toggle">
         <input type="checkbox" id="use_native_notifications" />
@@ -206,10 +251,10 @@
         <span class="slider"></span>
       </label>
     </div>
-    <div class="volume-row" id="volume-row">
+    <div class="slider-row">
       <span class="toggle-label">Głośność</span>
       <input type="range" id="sound_volume" min="0" max="100" value="50" />
-      <span class="volume-val" id="volume-val">50%</span>
+      <span class="slider-val" id="volume-val">50%</span>
     </div>
   </div>
 
@@ -238,7 +283,11 @@
         document.getElementById('sound_enabled').checked = s.sound_enabled;
         document.getElementById('sound_volume').value = Math.round(s.sound_volume * 100);
         document.getElementById('volume-val').textContent = Math.round(s.sound_volume * 100) + '%';
+        document.getElementById('notification_height').value = s.notification_height || 80;
+        document.getElementById('height-val').textContent = (s.notification_height || 80) + 'px';
         document.getElementById('use_native_notifications').checked = s.use_native_notifications;
+        document.getElementById('custom_theme').value = s.custom_theme || '#e74c3c';
+        document.getElementById('custom_background').value = s.custom_background || '#1a1a2e';
         updateThemeSelection();
         updateBgSelection();
 
@@ -248,45 +297,72 @@
       } catch(e) { console.error(e); }
     })();
 
-    // Kolor powiadomien
     function updateThemeSelection() {
       document.querySelectorAll('#themes .theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.theme === currentTheme);
       });
+      document.getElementById('custom-theme-wrap').classList.toggle('active', currentTheme === 'custom');
     }
 
     function updateBgSelection() {
       document.querySelectorAll('#backgrounds .theme-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.bg === currentBg);
       });
+      document.getElementById('custom-bg-wrap').classList.toggle('active', currentBg === 'custom');
     }
 
     document.getElementById('themes').addEventListener('click', (e) => {
       const btn = e.target.closest('.theme-btn');
-      if (btn) {
+      if (btn && btn.dataset.theme) {
         currentTheme = btn.dataset.theme;
         updateThemeSelection();
       }
     });
 
+    document.getElementById('custom-theme-wrap').addEventListener('click', () => {
+      currentTheme = 'custom';
+      updateThemeSelection();
+    });
+
+    document.getElementById('custom_theme').addEventListener('input', () => {
+      currentTheme = 'custom';
+      updateThemeSelection();
+    });
+
     document.getElementById('backgrounds').addEventListener('click', (e) => {
       const btn = e.target.closest('.theme-btn');
-      if (btn) {
+      if (btn && btn.dataset.bg) {
         currentBg = btn.dataset.bg;
         updateBgSelection();
       }
     });
 
-    // Volume slider
+    document.getElementById('custom-bg-wrap').addEventListener('click', () => {
+      currentBg = 'custom';
+      updateBgSelection();
+    });
+
+    document.getElementById('custom_background').addEventListener('input', () => {
+      currentBg = 'custom';
+      updateBgSelection();
+    });
+
     document.getElementById('sound_volume').addEventListener('input', (e) => {
       document.getElementById('volume-val').textContent = e.target.value + '%';
+    });
+
+    document.getElementById('notification_height').addEventListener('input', (e) => {
+      document.getElementById('height-val').textContent = e.target.value + 'px';
     });
 
     // Zapisz
     document.getElementById('btn-save').addEventListener('click', async () => {
       const settings = {
         theme: currentTheme,
+        custom_theme: document.getElementById('custom_theme').value,
         background: currentBg,
+        custom_background: document.getElementById('custom_background').value,
+        notification_height: parseInt(document.getElementById('notification_height').value),
         autostart: document.getElementById('autostart').checked,
         start_minimized: document.getElementById('start_minimized').checked,
         sound_enabled: document.getElementById('sound_enabled').checked,
@@ -301,7 +377,6 @@
       } catch(e) { alert('Błąd zapisu: ' + e); }
     });
 
-    // Anuluj
     document.getElementById('btn-cancel').addEventListener('click', async () => {
       try { await win.close(); } catch(e) {}
     });

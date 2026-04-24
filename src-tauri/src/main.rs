@@ -38,7 +38,10 @@ fn png_to_tauri_icon(png_bytes: &[u8]) -> TauriImage<'static> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
     theme: String,
+    custom_theme: String,
     background: String,
+    custom_background: String,
+    notification_height: f64,
     autostart: bool,
     start_minimized: bool,
     sound_volume: f32,
@@ -50,7 +53,10 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "red".into(),
+            custom_theme: "#e74c3c".into(),
             background: "dark".into(),
+            custom_background: "#1a1a2e".into(),
+            notification_height: 80.0,
             autostart: false,
             start_minimized: false,
             sound_volume: 0.5,
@@ -99,6 +105,14 @@ fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
 
 // === Powiadomienia ===
 
+fn urlencode(s: &str) -> String {
+    s.chars().map(|c| match c {
+        '#' => "%23".to_string(),
+        ' ' => "%20".to_string(),
+        _ => c.to_string(),
+    }).collect()
+}
+
 #[tauri::command]
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
     let settings = load_settings(&app);
@@ -121,7 +135,10 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
     let _ = body;
     let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
     let label = format!("notif_{}", id);
-    let url = format!("notification.html?theme={}&bg={}", settings.theme, settings.background);
+    let h = settings.notification_height.clamp(60.0, 150.0);
+    let url = format!("notification.html?theme={}&bg={}&ct={}&cb={}",
+        settings.theme, settings.background,
+        urlencode(&settings.custom_theme), urlencode(&settings.custom_background));
 
     let window = WebviewWindowBuilder::new(
         &app,
@@ -129,9 +146,9 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         WebviewUrl::App(url.into())
     )
     .title(title)
-    .inner_size(360.0, 60.0)
-    .min_inner_size(360.0, 60.0)
-    .max_inner_size(360.0, 60.0)
+    .inner_size(360.0, h)
+    .min_inner_size(360.0, h)
+    .max_inner_size(360.0, h)
     .decorations(false)
     .always_on_top(true)
     .skip_taskbar(true)
@@ -140,7 +157,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
     .build()
     .map_err(|e| e.to_string())?;
 
-    // Pozycjonuj na monitorze okna glownego (nie primary_monitor ktory moze zwrocic zly monitor)
+    // Pozycjonuj na monitorze okna glownego
     let monitor = app.get_webview_window("main")
         .and_then(|w| w.current_monitor().ok().flatten())
         .or_else(|| window.primary_monitor().ok().flatten());
@@ -151,7 +168,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
         let monitor_pos = monitor.position();
 
         let phys_w = (360.0 * scale_factor) as u32;
-        let phys_h = (60.0 * scale_factor) as u32;
+        let phys_h = (h * scale_factor) as u32;
 
         let margin_x = (12.0 * scale_factor) as i32;
         let margin_y = (50.0 * scale_factor) as i32;
@@ -165,8 +182,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
 
     let _ = window.show();
 
-    // Na Linuxie KWin/Wayland ignoruje hinty pozycji przy tworzeniu okna,
-    // wymuszamy ponownie po krotkim opoznieniu
+    // Na Linuxie KWin/Wayland wymuszamy ponownie po opoznieniu
     #[cfg(target_os = "linux")]
     {
         let win_clone = window.clone();
@@ -182,7 +198,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
                 let monitor_pos = monitor.position();
 
                 let phys_w = (360.0 * scale_factor) as u32;
-                let phys_h = (60.0 * scale_factor) as u32;
+                let phys_h = (h * scale_factor) as u32;
 
                 let margin_x = (12.0 * scale_factor) as i32;
                 let margin_y = (50.0 * scale_factor) as i32;
@@ -278,7 +294,7 @@ fn open_settings_window(app: AppHandle) -> Result<(), String> {
 
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
         .title("Ustawienia — Google Chat by ism")
-        .inner_size(480.0, 600.0)
+        .inner_size(480.0, 700.0)
         .resizable(false)
         .center()
         .build()
