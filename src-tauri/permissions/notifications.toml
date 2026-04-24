@@ -9,6 +9,9 @@ commands.allow = [
     "close_notification_window",
     "has_notification_window",
     "show_main_window",
+    "open_settings_window",
+    "get_settings",
+    "save_settings",
     "upload_file_stream",
     "set_tray_alert"
 ]

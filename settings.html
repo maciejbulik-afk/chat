@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ustawienia</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      padding: 28px 32px;
+      user-select: none;
+    }
+    h1 { font-size: 20px; color: #fff; margin-bottom: 24px; }
+    .section { margin-bottom: 24px; }
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    /* Color presets */
+    .themes {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .theme-btn {
+      width: 48px; height: 48px;
+      border-radius: 10px;
+      border: 3px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.15s;
+      position: relative;
+    }
+    .theme-btn:hover { transform: scale(1.1); }
+    .theme-btn.active { border-color: #fff; }
+    .theme-btn::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: #888;
+      white-space: nowrap;
+    }
+    .theme-red    { background: #e74c3c; }
+    .theme-blue   { background: #3498db; }
+    .theme-green  { background: #2ecc71; }
+    .theme-purple { background: #9b59b6; }
+    .theme-orange { background: #e67e22; }
+    .theme-cyan   { background: #00bcd4; }
+    /* Toggles */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+    }
+    .toggle-label { font-size: 14px; }
+    .toggle-desc { font-size: 11px; color: #666; margin-top: 2px; }
+    .toggle {
+      position: relative;
+      width: 44px; height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle .slider {
+      position: absolute; inset: 0;
+      background: #333;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle .slider::before {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      left: 3px; bottom: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .slider { background: #2ecc71; }
+    .toggle input:checked + .slider::before { transform: translateX(20px); }
+    /* Volume slider */
+    .volume-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+    }
+    .volume-row input[type="range"] {
+      flex: 1;
+      accent-color: #3498db;
+      height: 6px;
+    }
+    .volume-val { font-size: 13px; color: #888; min-width: 35px; text-align: right; }
+    /* Save button */
+    .save-bar {
+      margin-top: 28px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+    .btn {
+      padding: 8px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #3498db; color: #fff; }
+    .btn-primary:hover { background: #2980b9; }
+    .btn-secondary { background: #333; color: #ccc; }
+    .btn-secondary:hover { background: #444; }
+    .saved-msg {
+      font-size: 12px;
+      color: #2ecc71;
+      opacity: 0;
+      transition: opacity 0.3s;
+      align-self: center;
+    }
+    .saved-msg.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>⚙ Ustawienia</h1>
+
+  <div class="section">
+    <div class="section-title">Kolor powiadomień</div>
+    <div class="themes" id="themes">
+      <div class="theme-btn theme-red"    data-theme="red"    data-label="Czerwony"></div>
+      <div class="theme-btn theme-blue"   data-theme="blue"   data-label="Niebieski"></div>
+      <div class="theme-btn theme-green"  data-theme="green"  data-label="Zielony"></div>
+      <div class="theme-btn theme-purple" data-theme="purple" data-label="Fioletowy"></div>
+      <div class="theme-btn theme-orange" data-theme="orange" data-label="Pomarańcz."></div>
+      <div class="theme-btn theme-cyan"   data-theme="cyan"   data-label="Cyjan"></div>
+    </div>
+  </div>
+
+  <div class="section" style="margin-top: 36px;">
+    <div class="section-title">Uruchamianie</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Autostart z systemem</div>
+        <div class="toggle-desc">Uruchamia aplikację po zalogowaniu</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="autostart" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Start zminimalizowany</div>
+        <div class="toggle-desc">Uruchamia w tle (tylko ikona w trayu)</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="start_minimized" />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Dźwięk</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Dźwięk powiadomienia</div>
+        <div class="toggle-desc">Odtwarza dźwięk przy nowej wiadomości</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="sound_enabled" />
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="volume-row" id="volume-row">
+      <span class="toggle-label">Głośność</span>
+      <input type="range" id="sound_volume" min="0" max="100" value="50" />
+      <span class="volume-val" id="volume-val">50%</span>
+    </div>
+  </div>
+
+  <div class="save-bar">
+    <span class="saved-msg" id="saved-msg">Zapisano!</span>
+    <button class="btn btn-secondary" id="btn-cancel">Anuluj</button>
+    <button class="btn btn-primary" id="btn-save">Zapisz</button>
+  </div>
+
+  <script type="module">
+    import { getCurrentWindow } from '@tauri-apps/api/window';
+    const { invoke } = window.__TAURI__.core;
+    const win = getCurrentWindow();
+
+    let currentTheme = 'red';
+
+    // Zaladuj ustawienia
+    (async () => {
+      try {
+        const s = await invoke('get_settings');
+        currentTheme = s.theme || 'red';
+        document.getElementById('autostart').checked = s.autostart;
+        document.getElementById('start_minimized').checked = s.start_minimized;
+        document.getElementById('sound_enabled').checked = s.sound_enabled;
+        document.getElementById('sound_volume').value = Math.round(s.sound_volume * 100);
+        document.getElementById('volume-val').textContent = Math.round(s.sound_volume * 100) + '%';
+        updateThemeSelection();
+      } catch(e) { console.error(e); }
+    })();
+
+    // Kolor powiadomien
+    function updateThemeSelection() {
+      document.querySelectorAll('.theme-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.theme === currentTheme);
+      });
+    }
+
+    document.getElementById('themes').addEventListener('click', (e) => {
+      const btn = e.target.closest('.theme-btn');
+      if (btn) {
+        currentTheme = btn.dataset.theme;
+        updateThemeSelection();
+      }
+    });
+
+    // Volume slider
+    document.getElementById('sound_volume').addEventListener('input', (e) => {
+      document.getElementById('volume-val').textContent = e.target.value + '%';
+    });
+
+    // Zapisz
+    document.getElementById('btn-save').addEventListener('click', async () => {
+      const settings = {
+        theme: currentTheme,
+        autostart: document.getElementById('autostart').checked,
+        start_minimized: document.getElementById('start_minimized').checked,
+        sound_enabled: document.getElementById('sound_enabled').checked,
+        sound_volume: parseInt(document.getElementById('sound_volume').value) / 100,
+      };
+      try {
+        await invoke('save_settings', { settings });
+        const msg = document.getElementById('saved-msg');
+        msg.classList.add('show');
+        setTimeout(() => msg.classList.remove('show'), 2000);
+      } catch(e) { alert('Błąd zapisu: ' + e); }
+    });
+
+    // Anuluj
+    document.getElementById('btn-cancel').addEventListener('click', async () => {
+      try { await win.close(); } catch(e) {}
+    });
+  </script>
+</body>
+</html>

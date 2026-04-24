@@ -1,4 +1,3 @@
-// Prevents additional console window on Windows in release
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
@@ -12,21 +11,16 @@ use tauri::AppHandle;
 use tauri::image::Image as TauriImage;
 use image::GenericImageView;
 use rodio::{Decoder, OutputStream, Sink};
-
-fn png_to_tauri_icon(png_bytes: &[u8]) -> TauriImage<'static> {
-    let img = image::load_from_memory(png_bytes).expect("Nie udalo sie zdekodowac ikony PNG");
-    let rgba = img.to_rgba8();
-    let (w, h) = img.dimensions();
-    TauriImage::new_owned(rgba.into_raw(), w, h)
-}
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::fs::File;
-use std::thread;
 use std::io::BufReader;
+use std::thread;
 use tokio::fs as async_fs;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
-
 use tauri::Manager;
+use tauri_plugin_autostart::ManagerExt;
 
 #[cfg(not(target_os = "linux"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -37,18 +31,89 @@ static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
 static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.png");
 static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.png");
 
+fn png_to_tauri_icon(png_bytes: &[u8]) -> TauriImage<'static> {
+    let img = image::load_from_memory(png_bytes).expect("Nie udalo sie zdekodowac ikony PNG");
+    let rgba = img.to_rgba8();
+    let (w, h) = img.dimensions();
+    TauriImage::new_owned(rgba.into_raw(), w, h)
+}
+
+// === Ustawienia ===
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AppSettings {
+    theme: String,
+    autostart: bool,
+    start_minimized: bool,
+    sound_volume: f32,
+    sound_enabled: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: "red".into(),
+            autostart: false,
+            start_minimized: false,
+            sound_volume: 0.5,
+            sound_enabled: true,
+        }
+    }
+}
+
+fn settings_path(app: &AppHandle) -> std::path::PathBuf {
+    let config_dir = app.path().app_config_dir().unwrap();
+    fs::create_dir_all(&config_dir).ok();
+    config_dir.join("settings.json")
+}
+
+fn load_settings(app: &AppHandle) -> AppSettings {
+    let path = settings_path(app);
+    if let Ok(data) = fs::read_to_string(&path) {
+        serde_json::from_str(&data).unwrap_or_default()
+    } else {
+        AppSettings::default()
+    }
+}
+
+#[tauri::command]
+fn get_settings(app: AppHandle) -> AppSettings {
+    load_settings(&app)
+}
+
+#[tauri::command]
+fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
+    let path = settings_path(&app);
+    let data = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    fs::write(&path, data).map_err(|e| e.to_string())?;
+
+    // Aktualizuj autostart
+    let autolaunch = app.autolaunch();
+    if settings.autostart {
+        autolaunch.enable().map_err(|e| e.to_string())?;
+    } else {
+        autolaunch.disable().map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+// === Powiadomienia ===
+
 #[tauri::command]
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
     #[cfg(not(target_os = "linux"))]
     {
         let _ = body;
+        let settings = load_settings(&app);
         let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
         let label = format!("notif_{}", id);
-        
+        let url = format!("notification.html?theme={}", settings.theme);
+
         let window = WebviewWindowBuilder::new(
             &app,
             label,
-            WebviewUrl::App("notification.html".into())
+            WebviewUrl::App(url.into())
         )
         .title(title)
         .inner_size(360.0, 80.0)
@@ -91,7 +156,7 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
             .icon("mail-message-new")
             .timeout(notify_rust::Timeout::Milliseconds(8000))
             .show()
-            .map_err(|e| format!("Błąd wysyłania powiadomienia D-Bus: {}", e))?;
+            .map_err(|e| format!("Błąd D-Bus: {}", e))?;
     }
 
     Ok(())
@@ -108,9 +173,13 @@ fn set_tray_alert(app: AppHandle, alert: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn play_notification_sound(volume: f32) -> Result<(), String> {
-    let safe_volume = volume.clamp(0.0, 1.0);
-    
+fn play_notification_sound(app: AppHandle, volume: f32) -> Result<(), String> {
+    let settings = load_settings(&app);
+    if !settings.sound_enabled {
+        return Ok(());
+    }
+    let safe_volume = (volume * settings.sound_volume).clamp(0.0, 1.0);
+
     thread::spawn(move || {
         if let Ok((_stream, stream_handle)) = OutputStream::try_default() {
             if let Ok(sink) = Sink::try_new(&stream_handle) {
@@ -133,7 +202,7 @@ async fn upload_file_stream(file_path: String) -> Result<String, String> {
     let meta = async_fs::metadata(&file_path)
         .await
         .map_err(|e| format!("Błąd odczytu metadanych: {}", e))?;
-    
+
     let size = meta.len();
     let path = std::path::Path::new(&file_path);
     let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown");
@@ -142,16 +211,11 @@ async fn upload_file_stream(file_path: String) -> Result<String, String> {
         .await
         .map_err(|e| format!("Błąd otwarcia pliku: {}", e))?;
 
-    println!("=== ROZPOCZĘTO SYMULACJĘ UPLOADU ===");
-    println!("Nazwa pliku: {}", file_name);
-    println!("Rozmiar pliku: {} bajtów", size);
-    println!("======================================");
-
     Ok(format!("Zakończono odczyt pliku ({}) o rozmiarze {} bajtów.", file_name, size))
 }
 
 #[tauri::command]
-fn close_notification_window(#[allow(unused_variables)] app: tauri::AppHandle) {
+fn close_notification_window(#[allow(unused_variables)] app: AppHandle) {
     #[cfg(not(target_os = "linux"))]
     {
         for (label, window) in app.webview_windows() {
@@ -163,17 +227,44 @@ fn close_notification_window(#[allow(unused_variables)] app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn has_notification_window(app: tauri::AppHandle) -> bool {
-    app.webview_windows().iter().any(|(label, _)| label.starts_with("notif_"))
-}
-
-#[tauri::command]
-fn show_main_window(app: tauri::AppHandle) {
+fn show_main_window(app: AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+#[tauri::command]
+fn open_settings_window(app: AppHandle) -> Result<(), String> {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.set_focus();
+        return Ok(());
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("Ustawienia — Google Chat")
+            .inner_size(480.0, 520.0)
+            .resizable(false)
+            .center()
+            .build()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("settings.html".into()))
+            .title("Ustawienia — Google Chat")
+            .inner_size(480.0, 520.0)
+            .resizable(false)
+            .center()
+            .build()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
 }
 
 fn main() {
@@ -248,7 +339,6 @@ fn main() {
 
                 if (count > 0) {
                     if (count > lastCount) {
-                        // Nowy rozmowca - natychmiast
                         console.log('[ISM-Chat] Nowy rozmowca, count:', count);
                         showNotification();
                     }
@@ -269,9 +359,6 @@ fn main() {
                 lastCount = count;
             }, 2000);
 
-            // === Przechwycenie Notification API ===
-            // Google Chat wywoluje new Notification() przy kazdej nowej wiadomosci
-            // Dziala niezaleznie od licznika nieprzeczytanych rozmow
             const NativeNotification = window.Notification;
             const ProxyNotification = function(title, options) {
                 const instance = new NativeNotification(title, options);
@@ -289,8 +376,6 @@ fn main() {
                 get: () => 'granted'
             });
             window.Notification = ProxyNotification;
-
-            // Upewnij sie ze requestPermission tez zwraca granted
             ProxyNotification.requestPermission = () => Promise.resolve('granted');
 
             window.addEventListener('focus', () => {
@@ -302,20 +387,29 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .invoke_handler(tauri::generate_handler![
             create_notification_window,
             play_notification_sound,
             upload_file_stream,
             close_notification_window,
-            has_notification_window,
             show_main_window,
-            set_tray_alert
+            set_tray_alert,
+            get_settings,
+            save_settings,
+            open_settings_window
         ])
         .setup(move |app| {
+            let settings = load_settings(&app.handle());
+
             let show_menu = MenuItem::with_id(app, "show", "Pokaż", true, None::<&str>)?;
+            let settings_menu = MenuItem::with_id(app, "settings", "Ustawienia", true, None::<&str>)?;
             let quit_menu = MenuItem::with_id(app, "quit", "Zakończ", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show_menu, &quit_menu])?;
-            
+            let menu = Menu::with_items(app, &[&show_menu, &settings_menu, &quit_menu])?;
+
             let _tray = TrayIconBuilder::with_id("main-tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&menu)
@@ -328,6 +422,8 @@ fn main() {
                             let _ = window.show();
                             let _ = window.set_focus();
                         }
+                    } else if event.id() == "settings" {
+                        let _ = open_settings_window(app.clone());
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -342,6 +438,8 @@ fn main() {
                 })
                 .build(app)?;
 
+            let visible = !settings.start_minimized;
+
             #[cfg(not(target_os = "linux"))]
             {
                 let _ = tauri::WebviewWindowBuilder::new(
@@ -351,6 +449,7 @@ fn main() {
                 )
                 .title("Google Chat Native")
                 .inner_size(1280.0, 800.0)
+                .visible(visible)
                 .initialization_script(inject_script)
                 .build()?;
             }
@@ -363,6 +462,7 @@ fn main() {
                 )
                 .title("Google Chat Native")
                 .inner_size(1280.0, 800.0)
+                .visible(visible)
                 .initialization_script(inject_script)
                 .build()?;
             }
@@ -374,7 +474,6 @@ fn main() {
                     api.prevent_close();
                     let _ = window.hide();
                 }
-                // Okna notyfikacji (notif_*) zamykaja sie normalnie
             }
             _ => {}
         })

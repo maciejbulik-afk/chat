@@ -1,129 +1,130 @@
 <!doctype html>
 <html lang="pl">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Notification</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-        overflow: hidden;
-        font-family: 'Segoe UI', system-ui, sans-serif;
-        display: flex;
-        align-items: center;
-        height: 100vh;
-        background: #1a1a2e;
-        cursor: pointer;
-        user-select: none;
-      }
-      .notification {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        width: 100%;
-        height: 100%;
-        padding: 0 20px;
-        border-left: 4px solid #e74c3c;
-        animation: pulse-bg 2s ease-in-out infinite;
-        position: relative;
-      }
-      .icon {
-        flex-shrink: 0;
-        width: 36px;
-        height: 36px;
-        background: #e74c3c;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 18px;
-        animation: pulse-icon 2s ease-in-out infinite;
-      }
-      .text {
-        flex: 1;
-        min-width: 0;
-      }
-      .title {
-        font-weight: 700;
-        font-size: 14px;
-        color: #fff;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-      }
-      .subtitle {
-        font-size: 11px;
-        color: #888;
-        margin-top: 2px;
-      }
-      .close-btn {
-        position: absolute;
-        top: 6px;
-        right: 8px;
-        width: 20px;
-        height: 20px;
-        border: none;
-        background: rgba(255,255,255,0.1);
-        color: #888;
-        font-size: 14px;
-        line-height: 20px;
-        text-align: center;
-        border-radius: 4px;
-        cursor: pointer;
-        padding: 0;
-      }
-      .close-btn:hover {
-        background: rgba(231, 76, 60, 0.5);
-        color: #fff;
-      }
-      @keyframes pulse-bg {
-        0%, 100% { background: rgba(231, 76, 60, 0.08); }
-        50% { background: rgba(231, 76, 60, 0.15); }
-      }
-      @keyframes pulse-icon {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.1); }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="notification" id="notif-body">
-      <div class="icon">💬</div>
-      <div class="text">
-        <div class="title" id="notif-title">Nowa wiadomość</div>
-        <div class="subtitle">Kliknij aby otworzyć czat</div>
-      </div>
-      <button class="close-btn" id="close-btn" title="Zamknij powiadomienie">✕</button>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Notification</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      height: 100vh;
+      background: #1a1a2e;
+      cursor: pointer;
+      user-select: none;
+    }
+    .notification {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      height: 100%;
+      padding: 0 20px;
+      border-left: 4px solid var(--accent);
+      animation: pulse-bg 2s ease-in-out infinite;
+      position: relative;
+    }
+    .icon {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      animation: pulse-icon 2s ease-in-out infinite;
+    }
+    .text { flex: 1; min-width: 0; }
+    .title {
+      font-weight: 700;
+      font-size: 14px;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .subtitle { font-size: 11px; color: #888; margin-top: 2px; }
+    .close-btn {
+      position: absolute;
+      top: 6px; right: 8px;
+      width: 20px; height: 20px;
+      border: none;
+      background: rgba(255,255,255,0.1);
+      color: #888;
+      font-size: 14px;
+      line-height: 20px;
+      text-align: center;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 0;
+    }
+    .close-btn:hover { background: rgba(255,255,255,0.25); color: #fff; }
+    @keyframes pulse-bg {
+      0%, 100% { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+      50% { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+    }
+    @keyframes pulse-icon {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    /* Themes */
+    :root { --accent: #e74c3c; }
+    body.theme-red    { --accent: #e74c3c; }
+    body.theme-blue   { --accent: #3498db; }
+    body.theme-green  { --accent: #2ecc71; }
+    body.theme-purple { --accent: #9b59b6; }
+    body.theme-orange { --accent: #e67e22; }
+    body.theme-cyan   { --accent: #00bcd4; }
+  </style>
+</head>
+<body>
+  <div class="notification" id="notif-body">
+    <div class="icon">💬</div>
+    <div class="text">
+      <div class="title" id="notif-title">Nowa wiadomość</div>
+      <div class="subtitle">Kliknij aby otworzyć czat</div>
     </div>
-    <script type="module">
-      import { getCurrentWindow } from '@tauri-apps/api/window';
-      const { invoke } = window.__TAURI__.core;
-      const win = getCurrentWindow();
+    <button class="close-btn" id="close-btn" title="Zamknij powiadomienie">✕</button>
+  </div>
+  <script type="module">
+    import { getCurrentWindow } from '@tauri-apps/api/window';
+    const { invoke } = window.__TAURI__.core;
+    const win = getCurrentWindow();
 
-      // Wyswietl nazwe nadawcy z tytulu okna
-      (async () => {
-        try {
-          const t = await win.title();
-          if (t && t !== 'Notification') {
-            document.getElementById('notif-title').textContent = t;
-          }
-        } catch(e) {}
-      })();
+    // Ustaw motyw z query param
+    const params = new URLSearchParams(window.location.search);
+    const theme = params.get('theme') || 'red';
+    document.body.className = 'theme-' + theme;
 
-      // Klikniecie w powiadomienie -> pokaz okno chata + zamknij powiadomienie
-      document.getElementById('notif-body').addEventListener('click', async (e) => {
-        if (e.target.id === 'close-btn') return;
-        try {
-          await invoke('show_main_window');
-          await win.close();
-        } catch(e) { console.error(e); }
-      });
+    // Wyswietl nazwe nadawcy
+    (async () => {
+      try {
+        const t = await win.title();
+        if (t && t !== 'Notification') {
+          document.getElementById('notif-title').textContent = t;
+        }
+      } catch(e) {}
+    })();
 
-      // X -> zamknij tylko to okienko (tray alert zostaje)
-      document.getElementById('close-btn').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        try { await win.close(); } catch(e) {}
-      });
-    </script>
-  </body>
+    // Klik -> pokaz czat + zamknij
+    document.getElementById('notif-body').addEventListener('click', async (e) => {
+      if (e.target.id === 'close-btn') return;
+      try {
+        await invoke('show_main_window');
+        await win.close();
+      } catch(e) {}
+    });
+
+    // X -> zamknij tylko okienko
+    document.getElementById('close-btn').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try { await win.close(); } catch(e) {}
+    });
+  </script>
+</body>
 </html>
