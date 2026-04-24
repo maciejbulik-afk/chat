@@ -232,7 +232,8 @@ fn play_notification_sound(app: AppHandle, volume: f32) -> Result<(), String> {
     if !settings.sound_enabled {
         return Ok(());
     }
-    let safe_volume = (volume * settings.sound_volume).clamp(0.0, 1.0);
+    let _ = volume;
+    let safe_volume = settings.sound_volume.clamp(0.0, 1.0);
 
     thread::spawn(move || {
         if let Ok((_stream, stream_handle)) = OutputStream::try_default() {
