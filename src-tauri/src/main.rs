@@ -233,7 +233,9 @@ fn play_notification_sound(app: AppHandle, volume: f32) -> Result<(), String> {
         return Ok(());
     }
     let _ = volume;
-    let safe_volume = settings.sound_volume.clamp(0.0, 1.0);
+    // Suwak 0-100% mapujemy na rodio 0.0-5.0
+    // (1.0 = oryginalna glosnosc pliku, powyzej = wzmocnienie)
+    let safe_volume = (settings.sound_volume * 5.0).clamp(0.0, 5.0);
 
     thread::spawn(move || {
         if let Ok((_stream, stream_handle)) = OutputStream::try_default() {
@@ -378,6 +380,8 @@ fn main() {
             const showNotification = () => {
                 const now = Date.now();
                 if (now - lastShowTime < 3000) return;
+                // Nie pokazuj powiadomienia gdy uzytkownik aktywnie uzywa czata
+                if (document.hasFocus()) return;
                 lastShowTime = now;
 
                 const t = document.title;
