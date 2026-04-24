@@ -10,8 +10,8 @@ use image::GenericImageView;
 use rodio::{Decoder, OutputStream, Sink};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::fs::File;
 use std::io::BufReader;
+use std::io::Cursor;
 use std::thread;
 use tokio::fs as async_fs;
 use tauri::menu::{Menu, MenuItem};
@@ -25,6 +25,7 @@ static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.png");
 static ICON_ALERT: &[u8] = include_bytes!("../icons/32x32-alert.png");
+static NOTIF_SOUND: &[u8] = include_bytes!("../assets/notif.mp3");
 
 fn png_to_tauri_icon(png_bytes: &[u8]) -> TauriImage<'static> {
     let img = image::load_from_memory(png_bytes).expect("Nie udalo sie zdekodowac ikony PNG");
@@ -237,11 +238,10 @@ fn play_notification_sound(app: AppHandle, volume: f32) -> Result<(), String> {
         if let Ok((_stream, stream_handle)) = OutputStream::try_default() {
             if let Ok(sink) = Sink::try_new(&stream_handle) {
                 sink.set_volume(safe_volume);
-                if let Ok(file) = File::open("assets/notif.mp3") {
-                    if let Ok(source) = Decoder::new(BufReader::new(file)) {
-                        sink.append(source);
-                        sink.sleep_until_end();
-                    }
+                let cursor = Cursor::new(NOTIF_SOUND);
+                if let Ok(source) = Decoder::new(BufReader::new(cursor)) {
+                    sink.append(source);
+                    sink.sleep_until_end();
                 }
             }
         }
@@ -318,15 +318,37 @@ fn main() {
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
             window.open = function(url, name, features) {
-                window.location.href = url;
+                // Linki do Google - otwieraj wewnatrz, reszta w przegladarce
+                try {
+                    const u = new URL(url, window.location.href);
+                    if (u.hostname.endsWith('google.com')) {
+                        window.location.href = url;
+                        return null;
+                    }
+                } catch(e) {}
+                // Zewnetrzny link -> otwieramy w przegladarce systemowej
+                if (window.__TAURI__ && window.__TAURI__.core) {
+                    window.__TAURI__.core.invoke('plugin:shell|open', { path: url }).catch(() => {});
+                }
                 return null;
             };
 
             document.addEventListener('click', (e) => {
                 const a = e.target.closest('a');
-                if (a && a.target === '_blank') {
-                    a.target = '_self';
-                }
+                if (!a || !a.href) return;
+                try {
+                    const u = new URL(a.href);
+                    if (u.hostname.endsWith('google.com')) {
+                        // Linki Google - zostaja wewnatrz
+                        if (a.target === '_blank') a.target = '_self';
+                    } else {
+                        // Linki zewnetrzne - otwieramy w przegladarce
+                        e.preventDefault();
+                        if (window.__TAURI__ && window.__TAURI__.core) {
+                            window.__TAURI__.core.invoke('plugin:shell|open', { path: a.href }).catch(() => {});
+                        }
+                    }
+                } catch(err) {}
             }, true);
 
             const invokeTauri = (cmd, args) => {
@@ -337,7 +359,8 @@ fn main() {
             };
 
             const getUnreadCount = () => {
-                const el = document.querySelector('div[aria-label*="nieprzeczytan"]');
+                // Polski UI: "nieprzeczytana wiadomość", Angielski: "unread"
+                const el = document.querySelector('div[aria-label*="nieprzeczytan"], div[aria-label*="unread"]');
                 if (el && el.textContent) {
                     const m = el.textContent.match(/\d+/);
                     if (m) return parseInt(m[0], 10);
