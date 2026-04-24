@@ -145,23 +145,55 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
 
     if let Some(monitor) = monitor {
         let scale_factor = monitor.scale_factor();
-        let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-            (360.0 * scale_factor) as u32,
-            (80.0 * scale_factor) as u32,
-        ));
         let monitor_size = monitor.size();
         let monitor_pos = monitor.position();
+
+        let phys_w = (360.0 * scale_factor) as u32;
+        let phys_h = (80.0 * scale_factor) as u32;
 
         let margin_x = (12.0 * scale_factor) as i32;
         let margin_y = (50.0 * scale_factor) as i32;
 
-        let x = monitor_pos.x + monitor_size.width as i32 - size.width as i32 - margin_x;
-        let y = monitor_pos.y + monitor_size.height as i32 - size.height as i32 - margin_y;
+        let x = monitor_pos.x + monitor_size.width as i32 - phys_w as i32 - margin_x;
+        let y = monitor_pos.y + monitor_size.height as i32 - phys_h as i32 - margin_y;
 
+        let _ = window.set_size(tauri::PhysicalSize::new(phys_w, phys_h));
         let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
     }
 
     let _ = window.show();
+
+    // Na Linuxie KWin/Wayland ignoruje hinty pozycji przy tworzeniu okna,
+    // wymuszamy ponownie po krotkim opoznieniu
+    #[cfg(target_os = "linux")]
+    {
+        let win_clone = window.clone();
+        let monitor2 = app.get_webview_window("main")
+            .and_then(|w| w.current_monitor().ok().flatten())
+            .or_else(|| win_clone.primary_monitor().ok().flatten());
+
+        if let Some(monitor) = monitor2 {
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                let scale_factor = monitor.scale_factor();
+                let monitor_size = monitor.size();
+                let monitor_pos = monitor.position();
+
+                let phys_w = (360.0 * scale_factor) as u32;
+                let phys_h = (80.0 * scale_factor) as u32;
+
+                let margin_x = (12.0 * scale_factor) as i32;
+                let margin_y = (50.0 * scale_factor) as i32;
+
+                let x = monitor_pos.x + monitor_size.width as i32 - phys_w as i32 - margin_x;
+                let y = monitor_pos.y + monitor_size.height as i32 - phys_h as i32 - margin_y;
+
+                let _ = win_clone.set_size(tauri::PhysicalSize::new(phys_w, phys_h));
+                let _ = win_clone.set_position(tauri::PhysicalPosition::new(x, y));
+            });
+        }
+    }
+
     Ok(())
 }
 
