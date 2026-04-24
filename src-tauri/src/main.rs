@@ -3,10 +3,7 @@
     windows_subsystem = "windows"
 )]
 
-#[cfg(not(target_os = "linux"))]
 use tauri::{AppHandle, WebviewWindowBuilder, WebviewUrl};
-#[cfg(target_os = "linux")]
-use tauri::AppHandle;
 
 use tauri::image::Image as TauriImage;
 use image::GenericImageView;
@@ -22,10 +19,8 @@ use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
 
-#[cfg(not(target_os = "linux"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-#[cfg(not(target_os = "linux"))]
 static WINDOW_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 static ICON_NORMAL: &[u8] = include_bytes!("../icons/32x32.png");
@@ -47,6 +42,7 @@ struct AppSettings {
     start_minimized: bool,
     sound_volume: f32,
     sound_enabled: bool,
+    use_native_notifications: bool,
 }
 
 impl Default for AppSettings {
@@ -57,6 +53,7 @@ impl Default for AppSettings {
             start_minimized: false,
             sound_volume: 0.5,
             sound_enabled: true,
+            use_native_notifications: false,
         }
     }
 }
@@ -102,53 +99,11 @@ fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
 
 #[tauri::command]
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = body;
-        let settings = load_settings(&app);
-        let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let label = format!("notif_{}", id);
-        let url = format!("notification.html?theme={}", settings.theme);
+    let settings = load_settings(&app);
 
-        let window = WebviewWindowBuilder::new(
-            &app,
-            label,
-            WebviewUrl::App(url.into())
-        )
-        .title(title)
-        .inner_size(360.0, 80.0)
-        .decorations(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .resizable(false)
-        .visible(false)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-        if let Ok(Some(monitor)) = window.primary_monitor() {
-            let scale_factor = monitor.scale_factor();
-            let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
-                (360.0 * scale_factor) as u32,
-                (80.0 * scale_factor) as u32,
-            ));
-            let monitor_size = monitor.size();
-            let monitor_pos = monitor.position();
-
-            let margin_x = (12.0 * scale_factor) as i32;
-            let margin_y = (50.0 * scale_factor) as i32;
-
-            let x = monitor_pos.x + monitor_size.width as i32 - size.width as i32 - margin_x;
-            let y = monitor_pos.y + monitor_size.height as i32 - size.height as i32 - margin_y;
-
-            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
-        }
-
-        let _ = window.show();
-    }
-
+    // Na Linuxie mozna uzyc natywnych powiadomien D-Bus
     #[cfg(target_os = "linux")]
-    {
-        let _ = app;
+    if settings.use_native_notifications {
         notify_rust::Notification::new()
             .summary(&title)
             .body(&body)
@@ -157,8 +112,49 @@ async fn create_notification_window(app: AppHandle, title: String, body: String)
             .timeout(notify_rust::Timeout::Milliseconds(8000))
             .show()
             .map_err(|e| format!("Błąd D-Bus: {}", e))?;
+        return Ok(());
     }
 
+    // Popup - identyczny na Windows i Linux
+    let _ = body;
+    let id = WINDOW_COUNTER.fetch_add(1, Ordering::SeqCst);
+    let label = format!("notif_{}", id);
+    let url = format!("notification.html?theme={}", settings.theme);
+
+    let window = WebviewWindowBuilder::new(
+        &app,
+        label,
+        WebviewUrl::App(url.into())
+    )
+    .title(title)
+    .inner_size(360.0, 80.0)
+    .decorations(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .resizable(false)
+    .visible(false)
+    .build()
+    .map_err(|e| e.to_string())?;
+
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let scale_factor = monitor.scale_factor();
+        let size = window.outer_size().unwrap_or(tauri::PhysicalSize::new(
+            (360.0 * scale_factor) as u32,
+            (80.0 * scale_factor) as u32,
+        ));
+        let monitor_size = monitor.size();
+        let monitor_pos = monitor.position();
+
+        let margin_x = (12.0 * scale_factor) as i32;
+        let margin_y = (50.0 * scale_factor) as i32;
+
+        let x = monitor_pos.x + monitor_size.width as i32 - size.width as i32 - margin_x;
+        let y = monitor_pos.y + monitor_size.height as i32 - size.height as i32 - margin_y;
+
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+
+    let _ = window.show();
     Ok(())
 }
 
@@ -215,13 +211,10 @@ async fn upload_file_stream(file_path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn close_notification_window(#[allow(unused_variables)] app: AppHandle) {
-    #[cfg(not(target_os = "linux"))]
-    {
-        for (label, window) in app.webview_windows() {
-            if label.starts_with("notif_") {
-                let _ = window.close();
-            }
+fn close_notification_window(app: AppHandle) {
+    for (label, window) in app.webview_windows() {
+        if label.starts_with("notif_") {
+            let _ = window.close();
         }
     }
 }
@@ -242,27 +235,13 @@ fn open_settings_window(app: AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    #[cfg(not(target_os = "linux"))]
-    {
-        WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
-            .title("Ustawienia — Google Chat")
-            .inner_size(480.0, 520.0)
-            .resizable(false)
-            .center()
-            .build()
-            .map_err(|e| e.to_string())?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        tauri::WebviewWindowBuilder::new(&app, "settings", tauri::WebviewUrl::App("settings.html".into()))
-            .title("Ustawienia — Google Chat")
-            .inner_size(480.0, 520.0)
-            .resizable(false)
-            .center()
-            .build()
-            .map_err(|e| e.to_string())?;
-    }
+    WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+        .title("Ustawienia — Google Chat")
+        .inner_size(480.0, 520.0)
+        .resizable(false)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -440,9 +419,7 @@ fn main() {
 
             let visible = !settings.start_minimized;
 
-            #[cfg(not(target_os = "linux"))]
-            {
-                let _ = tauri::WebviewWindowBuilder::new(
+            let _ = tauri::WebviewWindowBuilder::new(
                     app,
                     "main",
                     tauri::WebviewUrl::External("https://chat.google.com".parse().unwrap())
@@ -452,20 +429,7 @@ fn main() {
                 .visible(visible)
                 .initialization_script(inject_script)
                 .build()?;
-            }
-            #[cfg(target_os = "linux")]
-            {
-                let _ = tauri::WebviewWindowBuilder::new(
-                    app,
-                    "main",
-                    tauri::WebviewUrl::External("https://chat.google.com".parse().unwrap())
-                )
-                .title("Google Chat Native")
-                .inner_size(1280.0, 800.0)
-                .visible(visible)
-                .initialization_script(inject_script)
-                .build()?;
-            }
+
             Ok(())
         })
         .on_window_event(|window, event| match event {

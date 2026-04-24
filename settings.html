@@ -168,6 +168,20 @@
     </div>
   </div>
 
+  <div class="section" id="native-notif-section" style="display:none;">
+    <div class="section-title">Styl powiadomień</div>
+    <div class="toggle-row">
+      <div>
+        <div class="toggle-label">Natywne powiadomienia systemowe</div>
+        <div class="toggle-desc">Używa D-Bus zamiast popup'a (kolory nieaktywne)</div>
+      </div>
+      <label class="toggle">
+        <input type="checkbox" id="use_native_notifications" />
+        <span class="slider"></span>
+      </label>
+    </div>
+  </div>
+
   <div class="section">
     <div class="section-title">Dźwięk</div>
     <div class="toggle-row">
@@ -210,7 +224,13 @@
         document.getElementById('sound_enabled').checked = s.sound_enabled;
         document.getElementById('sound_volume').value = Math.round(s.sound_volume * 100);
         document.getElementById('volume-val').textContent = Math.round(s.sound_volume * 100) + '%';
+        document.getElementById('use_native_notifications').checked = s.use_native_notifications;
         updateThemeSelection();
+
+        // Pokaz toggle natywnych powiadomien tylko na Linuxie
+        if (navigator.platform.includes('Linux')) {
+          document.getElementById('native-notif-section').style.display = '';
+        }
       } catch(e) { console.error(e); }
     })();
 
@@ -242,6 +262,7 @@
         start_minimized: document.getElementById('start_minimized').checked,
         sound_enabled: document.getElementById('sound_enabled').checked,
         sound_volume: parseInt(document.getElementById('sound_volume').value) / 100,
+        use_native_notifications: document.getElementById('use_native_notifications').checked,
       };
       try {
         await invoke('save_settings', { settings });
