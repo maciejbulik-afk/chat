@@ -18,6 +18,8 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_shell::ShellExt;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -104,6 +106,77 @@ fn save_settings(app: AppHandle, settings: AppSettings) -> Result<(), String> {
     Ok(())
 }
 
+// === Linki zewnetrzne ===
+
+/// Czy to wrapper Google na link zewnetrzny (https://www.google.com/url?q=...).
+fn is_google_redirect(url: &tauri::Url) -> bool {
+    let host = url.host_str().unwrap_or("");
+    (host == "www.google.com" || host == "google.com") && url.path() == "/url"
+}
+
+/// Hosty obslugiwane WEWNATRZ okna aplikacji.
+///
+/// UWAGA: na Linuksie WebKitGTK wola on_navigation TAKZE dla iframe'ow, a Chat
+/// laduje w ramkach widgety z roznych hostow Google (ogs.google.com - przelacznik
+/// aplikacji, contacts.google.com - wizytowki kontaktow, apis.google.com).
+/// Dlatego ta lista musi obejmowac cale *.google.com - inaczej widgety wyskakuja
+/// w przegladarce przy starcie. Wyjatkiem jest wrapper /url?q=, ktory z definicji
+/// prowadzi na zewnatrz. Rozroznianie "docs/drive do przegladarki, reszta w oknie"
+/// robi warstwa JS, ktora widzi klikniecie uzytkownika i dziala tylko w glownej ramce.
+fn is_internal_url(url: &tauri::Url) -> bool {
+    match url.scheme() {
+        "http" | "https" => {
+            if is_google_redirect(url) {
+                return false;
+            }
+            let host = url.host_str().unwrap_or("");
+            host == "google.com"
+                || host.ends_with(".google.com")
+                || host.ends_with(".googleusercontent.com")
+                || host.ends_with(".gstatic.com")
+                || host == "accounts.youtube.com"
+        }
+        // tauri://, about:blank, blob:, data: - wewnetrzne okna aplikacji
+        _ => true,
+    }
+}
+
+/// Rozpakowuje https://www.google.com/url?q=<cel> do samego <cel>.
+fn unwrap_google_redirect(url: &tauri::Url) -> String {
+    let mut current = url.clone();
+    for _ in 0..3 {
+        let host = current.host_str().unwrap_or("").to_string();
+        let is_wrapper =
+            (host == "www.google.com" || host == "google.com") && current.path() == "/url";
+        if !is_wrapper {
+            break;
+        }
+        let target = current
+            .query_pairs()
+            .find(|(k, _)| k == "q" || k == "url")
+            .map(|(_, v)| v.into_owned());
+        match target.and_then(|t| tauri::Url::parse(&t).ok()) {
+            Some(next) => current = next,
+            None => break,
+        }
+    }
+    current.to_string()
+}
+
+/// Log ze skryptu wstrzykiwanego -> terminal, zeby nie trzeba bylo
+/// otwierac narzedzi deweloperskich w oknie czatu.
+#[tauri::command]
+fn js_log(msg: String) {
+    println!("[ISM-Chat][js] {}", msg);
+}
+
+/// Odczyt schowka po stronie Rusta - uzywany, gdy WebKit odrzuci
+/// navigator.clipboard.readText() w oknie czatu.
+#[tauri::command]
+fn read_clipboard_text(app: AppHandle) -> Result<String, String> {
+    app.clipboard().read_text().map_err(|e| e.to_string())
+}
+
 // === Powiadomienia ===
 
 fn urlencode(s: &str) -> String {
@@ -118,18 +191,27 @@ fn urlencode(s: &str) -> String {
 async fn create_notification_window(app: AppHandle, title: String, body: String) -> Result<(), String> {
     let settings = load_settings(&app);
 
-    // Na Linuxie mozna uzyc natywnych powiadomien D-Bus
+    // Na Linuxie mozna uzyc natywnych powiadomien D-Bus.
+    // Pod natywnym Wayland klient NIE MOZE ustawiac pozycji wlasnego okna,
+    // wiec wlasny popup wyladowalby na srodku ekranu - wtedy zawsze D-Bus.
     #[cfg(target_os = "linux")]
-    if settings.use_native_notifications {
-        notify_rust::Notification::new()
-            .summary(&title)
-            .body(&body)
-            .appname("Google Chat by ism")
-            .icon("mail-message-new")
-            .timeout(notify_rust::Timeout::Milliseconds(8000))
-            .show()
-            .map_err(|e| format!("Błąd D-Bus: {}", e))?;
-        return Ok(());
+    {
+        let on_wayland = std::env::var("WAYLAND_DISPLAY").is_ok()
+            && std::env::var("GDK_BACKEND")
+                .map(|v| !v.contains("x11"))
+                .unwrap_or(true);
+
+        if settings.use_native_notifications || on_wayland {
+            notify_rust::Notification::new()
+                .summary(&title)
+                .body(&body)
+                .appname("Google Chat by ism")
+                .icon("mail-message-new")
+                .timeout(notify_rust::Timeout::Milliseconds(8000))
+                .show()
+                .map_err(|e| format!("Błąd D-Bus: {}", e))?;
+            return Ok(());
+        }
     }
 
     // Popup - identyczny na Windows i Linux
@@ -279,13 +361,25 @@ fn close_notification_window(app: AppHandle) {
     }
 }
 
+/// Przywraca okno glowne po schowaniu do traya.
+///
+/// Kolejnosc ma znaczenie: unminimize() na oknie, ktore jest jeszcze ukryte,
+/// zostawia GTK w polowicznym stanie. Najpierw mapujemy okno, dopiero potem
+/// je odminimalizowujemy.
+fn present_main_window(app: &AppHandle) {
+    let window = match app.get_webview_window("main") {
+        Some(w) => w,
+        None => return,
+    };
+
+    let _ = window.show();
+    let _ = window.unminimize();
+    let _ = window.set_focus();
+}
+
 #[tauri::command]
 fn show_main_window(app: AppHandle) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
-    }
+    present_main_window(&app);
 }
 
 #[tauri::command]
@@ -307,8 +401,19 @@ fn open_settings_window(app: AppHandle) -> Result<(), String> {
 }
 
 fn main() {
+    // Zostajemy na X11 (XWayland).
+    //
+    // Natywny Wayland naprawia wklejanie, ale psuje zarzadzanie oknem:
+    // po hide()/show() kompozytor trzyma stara geometrie dekoracji i przyciski
+    // na belce przestaja reagowac (dopiero dwuklik w belke to odblokowuje),
+    // a wlasnego okna popupu nie da sie pozycjonowac.
+    // Za Ctrl+V odpowiada awaryjne wklejanie w skrypcie wstrzykiwanym nizej.
+    //
+    // Kto chce sprobowac natywnego Waylandu: ISM_CHAT_FORCE_WAYLAND=1
     #[cfg(target_os = "linux")]
-    std::env::set_var("GDK_BACKEND", "x11");
+    if std::env::var("ISM_CHAT_FORCE_WAYLAND").is_err() {
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
 
     let inject_script = r#"
         window.addEventListener('DOMContentLoaded', () => {
@@ -320,39 +425,77 @@ fn main() {
 
             console.log('[ISM-Chat] Skrypt wstrzykniety');
 
-            window.open = function(url, name, features) {
-                // Linki do Google - otwieraj wewnatrz, reszta w przegladarce
+            // ==========================================================
+            // Linki: co zostaje w oknie, a co leci do przegladarki
+            //
+            // Stary warunek hostname.endsWith('google.com') uznawal za
+            // "wewnetrzny" rowniez wrapper https://www.google.com/url?q=<cel>,
+            // ktorym Google Chat opakowuje linki z wiadomosci. Dlatego okno
+            // nawigowalo do wrappera, ten robil 302 na docelowa strone
+            // i zewnetrzny link ladowal w aplikacji.
+            // ==========================================================
+            const isInternalHost = (h) =>
+                h === 'chat.google.com' ||
+                h === 'accounts.google.com' ||
+                h === 'accounts.youtube.com' ||
+                h.endsWith('.googleusercontent.com');
+
+            const unwrapRedirect = (raw) => {
                 try {
-                    const u = new URL(url, window.location.href);
-                    if (u.hostname.endsWith('google.com')) {
-                        window.location.href = url;
-                        return null;
+                    let u = new URL(raw, window.location.href);
+                    for (let i = 0; i < 3; i++) {
+                        const h = u.hostname;
+                        const isWrapper = (h === 'www.google.com' || h === 'google.com')
+                            && u.pathname === '/url';
+                        if (!isWrapper) break;
+                        const t = u.searchParams.get('q') || u.searchParams.get('url');
+                        if (!t) break;
+                        u = new URL(t, u.href);
                     }
-                } catch(e) {}
-                // Zewnetrzny link -> otwieramy w przegladarce systemowej
+                    return u.href;
+                } catch (err) { return String(raw); }
+            };
+
+            const isExternal = (raw) => {
+                try {
+                    const u = new URL(unwrapRedirect(raw), window.location.href);
+                    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+                    return !isInternalHost(u.hostname);
+                } catch (err) { return false; }
+            };
+
+            const openExternal = (raw) => {
+                const target = unwrapRedirect(raw);
                 if (window.__TAURI__ && window.__TAURI__.core) {
-                    window.__TAURI__.core.invoke('plugin:shell|open', { path: url }).catch(() => {});
+                    window.__TAURI__.core.invoke('plugin:shell|open', { path: target })
+                        .catch((err) => console.error('[ISM-Chat] shell|open:', err));
                 }
+            };
+
+            window.open = function (url, name, features) {
+                if (!url) return null;
+                if (isExternal(url)) openExternal(url);
+                else window.location.href = url;
                 return null;
             };
 
-            document.addEventListener('click', (e) => {
-                const a = e.target.closest('a');
-                if (!a || !a.href) return;
-                try {
-                    const u = new URL(a.href);
-                    if (u.hostname.endsWith('google.com')) {
-                        // Linki Google - zostaja wewnatrz
-                        if (a.target === '_blank') a.target = '_self';
-                    } else {
-                        // Linki zewnetrzne - otwieramy w przegladarce
-                        e.preventDefault();
-                        if (window.__TAURI__ && window.__TAURI__.core) {
-                            window.__TAURI__.core.invoke('plugin:shell|open', { path: a.href }).catch(() => {});
-                        }
-                    }
-                } catch(err) {}
-            }, true);
+            const linkHandler = (e) => {
+                if (e.button === 2) return;
+                const a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+                if (!a) return;
+                if (!isExternal(a.href)) {
+                    if (a.target === '_blank') a.target = '_self';
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                // KLUCZOWE: samo preventDefault nie wystarcza - Google ma wlasny
+                // handler kliknięcia, ktory i tak ustawia window.location.
+                if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                openExternal(a.href);
+            };
+            document.addEventListener('click', linkHandler, true);
+            document.addEventListener('auxclick', linkHandler, true);
 
             const invokeTauri = (cmd, args) => {
                 if (window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke) {
@@ -445,11 +588,132 @@ fn main() {
             window.addEventListener('focus', () => {
                 invokeTauri('close_notification_window', {}).catch(() => {});
             });
+
+            // ==========================================================
+            // Wymuszone wklejanie zwyklym tekstem (Linux / WebKitGTK)
+            //
+            // Diagnoza z logow: zdarzenie 'paste' DOCHODZI i ma tresc, ale gdy
+            // w schowku jest wersja text/html, edytor Chata nie wstawia nic.
+            // Ctrl+Shift+V dziala, bo podsuwa mu wylacznie text/plain.
+            // Robimy wiec to samo dla zwyklego Ctrl+V: przejmujemy zdarzenie,
+            // wyciagamy text/plain i wstawiamy sami.
+            //
+            // Obrazki i pliki przepuszczamy do Chata bez tykania.
+            // Kosztem jest utrata formatowania - tak samo jak przy Ctrl+Shift+V.
+            // ==========================================================
+            if (navigator.userAgent.indexOf('Linux') !== -1) {
+                const plog = (...a) => {
+                    const msg = a.map((x) => typeof x === 'string' ? x : String(x)).join(' ');
+                    console.log('[ISM-Chat][paste]', msg);
+                    invokeTauri('js_log', { msg: '[paste] ' + msg }).catch(() => {});
+                };
+
+                const isEditable = (el) => !!el && (
+                    el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA'
+                );
+
+                // Wstawia tekst tak, zeby edytor Chata zobaczyl zmiane.
+                const insertText = (text) => {
+                    const el = document.activeElement;
+                    if (!isEditable(el)) return false;
+
+                    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+                        const a = el.selectionStart != null ? el.selectionStart : el.value.length;
+                        const b = el.selectionEnd != null ? el.selectionEnd : el.value.length;
+                        el.value = el.value.slice(0, a) + text + el.value.slice(b);
+                        el.selectionStart = el.selectionEnd = a + text.length;
+                        el.dispatchEvent(new Event('input', { bubbles: true }));
+                        plog('wstawione do', el.tagName);
+                        return true;
+                    }
+
+                    try {
+                        if (document.execCommand('insertText', false, text)) {
+                            plog('wstawione przez execCommand');
+                            return true;
+                        }
+                    } catch (err) { plog('execCommand wyjatek:', err && err.message); }
+
+                    const sel = window.getSelection();
+                    if (!sel || sel.rangeCount === 0) { plog('brak zaznaczenia'); return false; }
+                    const range = sel.getRangeAt(0);
+                    range.deleteContents();
+                    const node = document.createTextNode(text);
+                    range.insertNode(node);
+                    range.setStartAfter(node);
+                    range.setEndAfter(node);
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    el.dispatchEvent(new InputEvent('input', {
+                        bubbles: true, inputType: 'insertText', data: text
+                    }));
+                    plog('wstawione przez Range');
+                    return true;
+                };
+
+                let handledAt = 0;
+
+                document.addEventListener('paste', (e) => {
+                    const dt = e.clipboardData;
+                    if (!dt) return;
+                    if (!isEditable(document.activeElement)) return;
+
+                    if (dt.files && dt.files.length) {
+                        plog('pliki w schowku - zostawiam Chatowi');
+                        handledAt = Date.now();
+                        return;
+                    }
+                    const hasImage = dt.items && Array.prototype.some.call(
+                        dt.items, (i) => i.type && i.type.indexOf('image/') === 0
+                    );
+                    if (hasImage) {
+                        plog('obrazek w schowku - zostawiam Chatowi');
+                        handledAt = Date.now();
+                        return;
+                    }
+
+                    const text = dt.getData('text/plain');
+                    if (!text) { plog('brak text/plain w zdarzeniu paste'); return; }
+
+                    // Chat nie dostaje juz tego zdarzenia - wstawiamy sami.
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                    plog('wymuszam zwykly tekst,', text.length, 'znakow');
+                    if (insertText(text)) handledAt = Date.now();
+                }, true);
+
+                // Siatka bezpieczenstwa: gdyby zdarzenie 'paste' w ogole nie
+                // przyszlo, po 150 ms czytamy schowek przez backend.
+                // (navigator.clipboard.readText() jest tu blokowany przez WebKita.)
+                document.addEventListener('keydown', (e) => {
+                    if (!e.ctrlKey || e.altKey) return;
+                    if (e.key !== 'v' && e.key !== 'V') return;
+                    if (!isEditable(document.activeElement)) return;
+
+                    const pressedAt = Date.now();
+                    setTimeout(async () => {
+                        if (handledAt >= pressedAt) return;
+                        if (!isEditable(document.activeElement)) return;
+                        plog('brak zdarzenia paste - czytam schowek przez backend');
+                        let text = '';
+                        try {
+                            text = await invokeTauri('read_clipboard_text');
+                        } catch (err) {
+                            plog('backend odmowil:', err);
+                            return;
+                        }
+                        if (!text) { plog('schowek pusty'); return; }
+                        insertText(text);
+                    }, 150);
+                }, true);
+            }
         });
     "#;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
@@ -464,7 +728,9 @@ fn main() {
             set_tray_alert,
             get_settings,
             save_settings,
-            open_settings_window
+            open_settings_window,
+            read_clipboard_text,
+            js_log
         ])
         .setup(move |app| {
             let settings = load_settings(&app.handle());
@@ -481,28 +747,24 @@ fn main() {
                     if event.id() == "quit" {
                         app.exit(0);
                     } else if event.id() == "show" {
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        present_main_window(app);
                     } else if event.id() == "settings" {
                         let _ = open_settings_window(app.clone());
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
+                        present_main_window(tray.app_handle());
                     }
                 })
                 .build(app)?;
 
             let visible = !settings.start_minimized;
+
+            // Siatka bezpieczenstwa: gdyby link ominal handler w JS
+            // (kod Google ustawia location.href, przekierowanie 302 itd.),
+            // przechwytujemy nawigacje tutaj i oddajemy ja przegladarce.
+            let nav_handle = app.handle().clone();
 
             let _ = tauri::WebviewWindowBuilder::new(
                     app,
@@ -513,6 +775,15 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .visible(visible)
                 .initialization_script(inject_script)
+                .on_navigation(move |url| {
+                    if is_internal_url(url) {
+                        return true;
+                    }
+                    let target = unwrap_google_redirect(url);
+                    println!("[ISM-Chat] Nawigacja zewnetrzna -> przegladarka: {}", target);
+                    let _ = nav_handle.shell().open(target, None);
+                    false
+                })
                 .build()?;
 
             Ok(())

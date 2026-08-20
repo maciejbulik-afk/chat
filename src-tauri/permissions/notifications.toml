@@ -13,5 +13,7 @@ commands.allow = [
     "get_settings",
     "save_settings",
     "upload_file_stream",
-    "set_tray_alert"
+    "set_tray_alert",
+    "read_clipboard_text",
+    "js_log"
 ]

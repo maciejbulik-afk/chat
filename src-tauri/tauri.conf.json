@@ -1,7 +1,7 @@
 {
   "productName": "google-chat-by-ism",
   "mainBinaryName": "google-chat",
-  "version": "1.0.1",
+  "version": "1.2.0",
   "identifier": "com.ism.googlechat",
   "build": {
     "beforeDevCommand": "npm run dev",
