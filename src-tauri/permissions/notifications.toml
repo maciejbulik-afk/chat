@@ -15,5 +15,6 @@ commands.allow = [
     "upload_file_stream",
     "set_tray_alert",
     "read_clipboard_text",
-    "js_log"
+    "js_log",
+    "read_clipboard_image"
 ]

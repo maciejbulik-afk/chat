@@ -18,6 +18,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
 use tauri::Manager;
 use tauri_plugin_autostart::ManagerExt;
+use tauri::webview::DownloadEvent;
 use tauri_plugin_clipboard_manager::ClipboardExt;
 use tauri_plugin_shell::ShellExt;
 
@@ -170,11 +171,55 @@ fn js_log(msg: String) {
     println!("[ISM-Chat][js] {}", msg);
 }
 
-/// Odczyt schowka po stronie Rusta - uzywany, gdy WebKit odrzuci
-/// navigator.clipboard.readText() w oknie czatu.
+/// Odczyt schowka po stronie Rusta - uzywany, gdy WebKit nie udostepni
+/// zawartosci schowka stronie.
+///
+/// Komendy sa `async`, bo plugin ostrzega przed wolaniem read_text/read_image
+/// z glownego watku - na Linuksie potrafi to zakleszczyc caly interfejs.
 #[tauri::command]
-fn read_clipboard_text(app: AppHandle) -> Result<String, String> {
+async fn read_clipboard_text(app: AppHandle) -> Result<String, String> {
     app.clipboard().read_text().map_err(|e| e.to_string())
+}
+
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+/// Obraz ze schowka jako PNG w base64.
+///
+/// Potrzebne, bo WebKitGTK nie przekazuje obrazu do strony - zdarzenie 'paste'
+/// przychodzi calkiem puste (potwierdzone logami: brak typow, 0 plikow).
+#[tauri::command]
+async fn read_clipboard_image(app: AppHandle) -> Result<String, String> {
+    let img = app
+        .clipboard()
+        .read_image()
+        .map_err(|e| format!("Schowek nie zawiera obrazu: {}", e))?;
+
+    let (w, h) = (img.width(), img.height());
+    let buf = image::RgbaImage::from_raw(w, h, img.rgba().to_vec())
+        .ok_or_else(|| "Niespojne wymiary obrazu ze schowka".to_string())?;
+
+    let mut png: Vec<u8> = Vec::new();
+    image::DynamicImage::ImageRgba8(buf)
+        .write_to(&mut Cursor::new(&mut png), image::ImageFormat::Png)
+        .map_err(|e| format!("Blad kodowania PNG: {}", e))?;
+
+    println!("[ISM-Chat] Obraz ze schowka: {}x{}, {} B", w, h, png.len());
+    Ok(base64_encode(&png))
 }
 
 // === Powiadomienia ===
@@ -653,27 +698,109 @@ fn main() {
 
                 let handledAt = 0;
 
+                // Wstawia obraz ze schowka jako plik. Najpierw probujemy
+                // syntetycznego zdarzenia 'paste' z DataTransfer, a gdy nikt go
+                // nie obsluzy (brak preventDefault) - sekwencji przeciagniecia,
+                // ktora Chat obsluguje przy upuszczaniu plikow na rozmowe.
+                const pasteImageFromBackend = async () => {
+                    const target = document.activeElement;
+                    if (!isEditable(target)) return;
+
+                    let b64 = '';
+                    try {
+                        b64 = await invokeTauri('read_clipboard_image');
+                    } catch (err) {
+                        plog('brak obrazu w schowku:', err);
+                        return;
+                    }
+                    if (!b64) return;
+
+                    let file;
+                    try {
+                        const bin = atob(b64);
+                        const bytes = new Uint8Array(bin.length);
+                        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                        file = new File([bytes], 'wklejony-obraz.png', { type: 'image/png' });
+                        plog('obraz z backendu,', bytes.length, 'bajtow');
+                    } catch (err) {
+                        plog('blad dekodowania obrazu:', err && err.message);
+                        return;
+                    }
+
+                    const dt2 = new DataTransfer();
+                    dt2.items.add(file);
+
+                    let handled = false;
+                    try {
+                        const ev = new ClipboardEvent('paste', {
+                            clipboardData: dt2, bubbles: true, cancelable: true
+                        });
+                        // dispatchEvent zwraca false, gdy ktos zrobil preventDefault
+                        handled = !target.dispatchEvent(ev);
+                        plog('syntetyczne paste obsluzone:', handled);
+                    } catch (err) {
+                        plog('syntetyczne paste niedostepne:', err && err.message);
+                    }
+
+                    if (handled) return;
+
+                    try {
+                        ['dragenter', 'dragover', 'drop'].forEach((type) => {
+                            target.dispatchEvent(new DragEvent(type, {
+                                bubbles: true, cancelable: true, dataTransfer: dt2
+                            }));
+                        });
+                        plog('wyslana sekwencja drop');
+                    } catch (err) {
+                        plog('drop niedostepny:', err && err.message);
+                    }
+                };
+
                 document.addEventListener('paste', (e) => {
                     const dt = e.clipboardData;
                     if (!dt) return;
                     if (!isEditable(document.activeElement)) return;
 
-                    if (dt.files && dt.files.length) {
-                        plog('pliki w schowku - zostawiam Chatowi');
-                        handledAt = Date.now();
-                        return;
-                    }
-                    const hasImage = dt.items && Array.prototype.some.call(
-                        dt.items, (i) => i.type && i.type.indexOf('image/') === 0
-                    );
-                    if (hasImage) {
-                        plog('obrazek w schowku - zostawiam Chatowi');
+                    const types = dt.types ? Array.prototype.slice.call(dt.types) : [];
+                    plog('typy w schowku:', types.join(', ') || '(brak)',
+                         '| files:', dt.files ? dt.files.length : 0,
+                         '| items:', dt.items ? dt.items.length : 0);
+
+                    // Cokolwiek innego niz czysty tekst - obrazek, plik, lista
+                    // URI po skopiowaniu pliku w menedzerze - oddajemy Chatowi.
+                    // dt.files/dt.items bywaja puste w WebKicie, wiec decyduje
+                    // dt.types, ktore jest tam wiarygodne.
+                    const looksLikeFile =
+                        (dt.files && dt.files.length > 0) ||
+                        types.some((t) =>
+                            t.indexOf('image/') === 0 ||
+                            t === 'Files' ||
+                            t === 'text/uri-list' ||
+                            t === 'application/x-moz-file'
+                        ) ||
+                        (dt.items && Array.prototype.some.call(
+                            dt.items, (i) => i.kind === 'file'
+                        ));
+
+                    if (looksLikeFile) {
+                        plog('plik/obrazek w schowku - zostawiam Chatowi');
                         handledAt = Date.now();
                         return;
                     }
 
                     const text = dt.getData('text/plain');
-                    if (!text) { plog('brak text/plain w zdarzeniu paste'); return; }
+                    if (!text) {
+                        // WebKitGTK nie przekazuje obrazu do strony - zdarzenie
+                        // przychodzi puste. Bierzemy obraz ze schowka przez
+                        // backend i podajemy go Chatowi jako plik.
+                        plog('puste zdarzenie paste - probuje obraz przez backend');
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+                        handledAt = Date.now();
+                        pasteImageFromBackend();
+                        return;
+                    }
 
                     // Chat nie dostaje juz tego zdarzenia - wstawiamy sami.
                     e.preventDefault();
@@ -730,6 +857,7 @@ fn main() {
             save_settings,
             open_settings_window,
             read_clipboard_text,
+            read_clipboard_image,
             js_log
         ])
         .setup(move |app| {
@@ -775,6 +903,49 @@ fn main() {
                 .inner_size(1280.0, 800.0)
                 .visible(visible)
                 .initialization_script(inject_script)
+                .on_download(|webview, event| {
+                    // Webview zapisuje zalacznik po cichu do domyslnego katalogu
+                    // pobierania i nie daje zadnego znaku - stad powiadomienie.
+                    match event {
+                        DownloadEvent::Requested { url, destination } => {
+                            println!(
+                                "[ISM-Chat] Pobieranie: {} -> {}",
+                                url,
+                                destination.display()
+                            );
+                        }
+                        DownloadEvent::Finished { url: _, path, success } => {
+                            if !success {
+                                println!("[ISM-Chat] Pobieranie nie powiodlo sie");
+                                return true;
+                            }
+                            let name = path
+                                .as_ref()
+                                .and_then(|p| p.file_name())
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("plik")
+                                .to_string();
+                            let full = path
+                                .as_ref()
+                                .map(|p| p.display().to_string())
+                                .unwrap_or_default();
+                            println!("[ISM-Chat] Pobrano: {}", full);
+
+                            let handle = webview.app_handle().clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = create_notification_window(
+                                    handle,
+                                    format!("Pobrano: {}", name),
+                                    full,
+                                )
+                                .await;
+                            });
+                        }
+                        _ => (),
+                    }
+                    // true = pozwalamy pobieraniu isc dalej
+                    true
+                })
                 .on_navigation(move |url| {
                     if is_internal_url(url) {
                         return true;
